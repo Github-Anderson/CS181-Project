@@ -4,9 +4,11 @@ from coordinate import Coordinate
 import math
 import time
 import copy
-
+import random
+import time
+random.seed(time.time())
 class Board:
-  def __init__(self, boardSize, timeLimit, p1, p2, selfplay, bot):
+  def __init__(self, boardSize, timeLimit, p1, p2, selfplay, bots):
     self.boardSize = boardSize
     self.timelimit = timeLimit
     self.player1 = p1
@@ -17,7 +19,7 @@ class Board:
     self.coordinate = [[Coordinate(i, j) for i in range(self.boardSize)] for j in range(self.boardSize)]
     self.depth = 2
     self.selfplay = selfplay
-    self.bot = bot
+    self.bots = bots  # Tuple of bot types (player1_bot, player2_bot)
     
     if self.boardSize == 8:
       maxIter = 4
@@ -184,7 +186,10 @@ class Board:
     return availablePosition
 
   def objectiveFunc(self, player):
-
+    # From xzz: In this function, we can def our own evaluation functions
+    # When initializing this function, with one additional parameters for objectiveFunc, we can choose which eva-func to use
+    # i.e., def objectiveFunc(self, player, type):
+    # if type == 'euclidean' : ......
     def point_distance(x1, y1, x2, y2):
       return math.sqrt((x2 - x1)**2 + (y2 - y1)**2)
 
@@ -204,6 +209,102 @@ class Board:
     val *= -1
     return val
   
+  def getPlayerMoves(self, player):
+    moves = []  # All possible moves
+    for p in player.pawns:
+      curr_tile = self.coordinate[p.y-1][p.x-1]
+      move = {
+        "from": curr_tile,
+        "to": self.getMovesCoord(self.getAksiValid(p))
+      }
+      moves.append(move)
+    return moves
+
+  def getMovesCoord(self, validactions):
+    moves = []
+    for l in validactions:
+      el = self.coordinate[l[1]-1][l[0]-1]
+      moves.append(el)
+    return moves
+
+  def movePawn(self, from_coord, to_coord):
+    from_tile = self.coordinate[from_coord[0]-1][from_coord[1]-1]
+    to_tile = self.coordinate[to_coord[0]-1][to_coord[1]-1]
+    
+    # apabila pindah dari tile kosong atau pindah menuju tile yang ada pionnya
+    if from_tile.pawn == 0 or to_tile.pawn != 0:
+      print("Invalid move pawn!")
+      return
+
+    # memindahkan pion
+    if from_tile.pawn == 1:
+      self.g_player.movePawn((from_tile.x+1, from_tile.y+1), (to_tile.x+1, to_tile.y+1))
+    elif from_tile.pawn == 2:
+      self.r_player.movePawn((from_tile.x+1, from_tile.y+1), (to_tile.x+1, to_tile.y+1))
+    else:
+      print("Invalid move pawn!")
+      return
+    to_tile.pawn = from_tile.pawn
+    from_tile.pawn = 0
+
+  def tempMovePawn(self, from_coord, to_coord):
+    from_tile = self.coordinate[from_coord[0]-1][from_coord[1]-1]
+    to_tile = self.coordinate[to_coord[0]-1][to_coord[1]-1]
+    
+    # memindahkan sementara pion
+    if from_tile.pawn == 1:
+      self.g_player.tempMovePawn((from_tile.x+1, from_tile.y+1), (to_tile.x+1, to_tile.y+1))
+    elif from_tile.pawn == 2:
+      self.r_player.tempMovePawn((from_tile.x+1, from_tile.y+1), (to_tile.x+1, to_tile.y+1))
+    else:
+      print("invalid temp move pawn")
+      return
+    to_tile.pawn = from_tile.pawn
+    from_tile.pawn = 0
+
+  def executeBotMove(self, turn):
+    max_time = time.time() + self.timelimit
+
+    # choose the bot type for this turn
+    current_bot = self.bots[0] if turn == 1 else self.bots[1]
+    # From xzz: playermax is the current player, playermin is the opponent  
+    playermax = self.player1 if turn == 1 else self.player2
+    playermin = self.player2 if turn == 1 else self.player1
+
+    # Call minimax or minimaxlocalSearch
+    if current_bot == "MLS":
+      value, move = self.minimax(self.depth, playermax, playermin, max_time, True)
+    elif current_bot == "M":
+      value, move = self.minimax(self.depth, playermax, playermin, max_time, False)
+    elif current_bot == "G":
+      value, move = self.greedyAgent(playermax)
+    elif current_bot == "R":
+      value, move = self.randomAgent(playermax)
+
+    # From xzz: The following print are for debugging and testing. These data can be valuable for our research as well. 
+    # print(value, move)
+
+    if move is None:
+      print("Status: no action taken")
+    else:
+      (x1, y1) = move[0]
+      (x2, y2) = move[1]
+      self.movePawn((x1, y1), (x2, y2))
+      print("Status: Pawn", (y1, x1), "moved to", (y2, x2))
+
+  def getMoveFromTile(self, player, x, y):
+    p = player.getPawn(x, y)
+    return self.getAksiValid(p)
+  
+######################Agent Deployment######################
+
+  '''
+  From xzz: From here to the end of this file, we implement the agents
+  Here I implement two agents: random and greedy myself.
+  To gat familiar with the code logic, just like we finish the pacman homeworks, 
+  the code of classes are encouraged to be read. 
+  '''
+
   def minimax(self, depth, playermax, playermin, timelimit, isLocalSearch, a=float("-inf"), b=float("inf"), isMax=True):
     # basis
     if depth == 0 or time.time() > timelimit:
@@ -305,88 +406,59 @@ class Board:
         possiblemoves.append(move)
     
     return possiblemoves
-  
-  def getPlayerMoves(self, player):
-    moves = []  # All possible moves
-    for p in player.pawns:
-      curr_tile = self.coordinate[p.y-1][p.x-1]
-      move = {
-        "from": curr_tile,
-        "to": self.getMovesCoord(self.getAksiValid(p))
-      }
-      moves.append(move)
-    return moves
+  # Greedy Agent, always choose the available move to arrive at the next state with the highest evaluation
+  # For the player in this turn, it doesn't care about the other player, and take the greedy move
+  def greedyAgent(self, player):
+    """
+    From xzz: Greedy Agent: Always chooses the move that results in the highest evaluation for the current player.
+    Here I will use the following code to help you get familiar with the functions provided by the template:
+    1. getPlayerMoves(player): get all the possible moves for the player, the return is a list of dict.
+    For a dict, one key is 'from', and the other key is 'to'. 'From' refers to the current coord and 'to' refers to all the valid coords
+    List contains many dict, since player has many pawns, and each pawn has many valid coords to move to.
+    All coords meentioned above are represented by the Coordinate class
+    2. tempMovePawn(from_coord, to_coord): move the pawn from from_coord to to_coord temporarily
+    Note that +1 is added to the x and y coordinates, since the Coordinate class is 1-indexed
+    3. objectiveFunc(player): get the evaluation value of the current player.
+    For the concrete evaluation metrics, please refer to the objectiveFunc function
+    """
+    possiblemoves = self.getPlayerMoves(player)
+    bestmove = None
+    bestval = float("-inf")
 
-  def getMovesCoord(self, validactions):
-    moves = []
-    for l in validactions:
-      el = self.coordinate[l[1]-1][l[0]-1]
-      moves.append(el)
-    return moves
+    for move in possiblemoves:
+      for to in move["to"]:
+        '''
+        From xzz: Temporarily move the pawn from the current position to the next position
+        and get the evaluation value of the current player.
+        The evaluation value is the value of the objective function.
+        Then move the pawn back to the original position.
+        '''
+        self.tempMovePawn((move["from"].y+1, move["from"].x+1), (to.y+1, to.x+1))
+        val = self.objectiveFunc(player)
+        self.tempMovePawn((to.y+1, to.x+1), (move["from"].y+1, move["from"].x+1))
 
-  def movePawn(self, from_coord, to_coord):
-    from_tile = self.coordinate[from_coord[0]-1][from_coord[1]-1]
-    to_tile = self.coordinate[to_coord[0]-1][to_coord[1]-1]
-    
-    # apabila pindah dari tile kosong atau pindah menuju tile yang ada pionnya
-    if from_tile.pawn == 0 or to_tile.pawn != 0:
-      print("Invalid move pawn!")
-      return
+        if val > bestval:
+          bestval = val
+          bestmove = ((move["from"].y+1, move["from"].x+1), (to.y+1, to.x+1))
 
-    # memindahkan pion
-    if from_tile.pawn == 1:
-      self.g_player.movePawn((from_tile.x+1, from_tile.y+1), (to_tile.x+1, to_tile.y+1))
-    elif from_tile.pawn == 2:
-      self.r_player.movePawn((from_tile.x+1, from_tile.y+1), (to_tile.x+1, to_tile.y+1))
-    else:
-      print("Invalid move pawn!")
-      return
-    to_tile.pawn = from_tile.pawn
-    from_tile.pawn = 0
+    return bestval, bestmove
+  def randomAgent(self, player):
+    """
+    From xzz: Random Agent: Chooses a random move from the available moves.
+    To realize real randomness, at the beginning of the python file:
+    random.seed(time.time())
+    """
+    possiblemoves = self.getPlayerMoves(player)
+    if len(possiblemoves) == 0:
+      return None
+    while True:
+      move = random.choice(possiblemoves)
+      if len(move["to"]) > 0:
+        break
+    to = random.choice(move["to"])
+    # Simulate the move
+    self.tempMovePawn((move["from"].y+1, move["from"].x+1), (to.y+1, to.x+1))
+    val = self.objectiveFunc(player)
+    self.tempMovePawn((to.y+1, to.x+1), (move["from"].y+1, move["from"].x+1))
+    return val, ((move["from"].y+1, move["from"].x+1), (to.y+1, to.x+1))
 
-  def tempMovePawn(self, from_coord, to_coord):
-    from_tile = self.coordinate[from_coord[0]-1][from_coord[1]-1]
-    to_tile = self.coordinate[to_coord[0]-1][to_coord[1]-1]
-    
-    # memindahkan sementara pion
-    if from_tile.pawn == 1:
-      self.g_player.tempMovePawn((from_tile.x+1, from_tile.y+1), (to_tile.x+1, to_tile.y+1))
-    elif from_tile.pawn == 2:
-      self.r_player.tempMovePawn((from_tile.x+1, from_tile.y+1), (to_tile.x+1, to_tile.y+1))
-    else:
-      print("invalid temp move pawn")
-      return
-    to_tile.pawn = from_tile.pawn
-    from_tile.pawn = 0
-
-  def executeBotMove(self):
-    max_time = time.time() + self.timelimit
-
-    # memanggil fungsi minimax search
-    if (self.selfplay):
-      playermax = self.player1 if self.turn == 1 else self.player2
-      playermin = self.player2 if self.turn == 1 else self.player1
-      if (self.turn == 2):
-        _, move = self.minimax(self.depth, playermax, playermin, max_time, True)
-      else:
-        _, move = self.minimax(self.depth, playermax, playermin, max_time, False)
-    else:
-      playermax = self.player2
-      playermin = self.player1
-      if (self.bot == "MLS"):
-        _, move = self.minimax(self.depth, playermax, playermin, max_time, True)
-      else:
-        _, move = self.minimax(self.depth, playermax, playermin, max_time, False)
-
-    # memindahkan pion
-    if move is None:
-      print("Status: no action taken")
-    else:
-      (x1, y1) = move[0]
-      (x2, y2) = move[1]
-      self.movePawn((x1, y1), (x2, y2))
-      print("Status: Pawn", (y1, x1), "moved to", (y2, x2))
-
-  def getMoveFromTile(self, player, x, y):
-    p = player.getPawn(x, y)
-    return self.getAksiValid(p)

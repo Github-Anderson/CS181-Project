@@ -9,62 +9,45 @@ import time
 from multiprocessing import Process
 import time
 
+# ...existing code...
+
 class Engine:
-    def __init__(self, boardsize, timelimit, player, system, bot):
-        if (player is not None):
-            self.player2 = Player("RED" if player=="GREEN" else "GREEN", boardsize)
-            self.player1 = Player(player, boardsize)
-            self.selfplay = False
-        else:
-            self.player1 = Player("RED", boardsize)
-            self.player2 = Player("GREEN", boardsize)
-            self.selfplay = True
-        
-        self.board = Board(boardsize, timelimit, self.player1, self.player2, self.selfplay, bot) 
-        self.turn = 1 #1 for player, 2 for bot
-        self.bot = bot
+    def __init__(self, boardsize, timelimit, player, system, bots):
+        self.player1 = Player("RED", boardsize)
+        self.player2 = Player("GREEN", boardsize)
+        self.selfplay = True
+        self.board = Board(boardsize, timelimit, self.player1, self.player2, self.selfplay, bots) 
+        self.turn = 1  # 1 for player1, 2 for player2
+        self.bots = bots  # Tuple of bot types (player1_bot, player2_bot)
         self.timelimit = self.board.timelimit
         self.timePlayer1 = 0
         self.timePlayer2 = 0
-        if (system == "GUI"):
-            self.system = "GUI"
-        else:
-            self.system = "CMD"
+        self.system = system
         self.start()
-    
+
     def start(self):
-        if (self.selfplay == True):
-            if (self.system == "CMD"):
+        if self.selfplay:
+            if self.system == "CMD":
                 # BOT VS BOT CMD MODE
                 start = time.time()
-                while (self.terminate_state() == 0):
+                while self.terminate_state() == 0:
                     self.board.printBoard()
                     print("Turn: ", "PLAYER1" if self.turn == 1 else "PLAYER2")
 
                     start_time = time.time()
-                    p = Process(target=self.board.executeBotMove())
-                    p.start()
-                    p.join(timeout=self.timelimit)
-
-                    if p.is_alive():
-                        # If bot is still running
-                        p.terminate()
-                        print('Bot exceed time limit!')
-                        
+                    self.board.executeBotMove(self.turn)  # 调用 executeBotMove，传递当前回合
                     end_time = time.time()
                     time_taken = end_time - start_time
 
                     print("Time taken for bot", self.turn, ":", time_taken)
 
-                    if (self.turn == 1):
+                    if self.turn == 1:
                         self.timePlayer1 += time_taken
                     else:
                         self.timePlayer2 += time_taken
-                    
-                    # inp = input("Press enter to continue ")
-                    
+
                     self.turn = 2 if self.turn == 1 else 1
-                    self.board.turn = 2 if self.board.turn == 1 else 1
+                    self.board.turn = self.turn
                 self.board.printBoard()
                 end = time.time()
                 print("Execution time:", end - start)
@@ -72,117 +55,13 @@ class Engine:
                 # BOT VS BOT GUI MODE
                 start = time.time()
                 self.gui = BoardGUI(self.board)
-                # self.gui.mainloop()
-                while (self.terminate_state() == 0):
+                while self.terminate_state() == 0:
                     self.gui.drawPawn()
-                    if (self.turn == 2):
-                        self.board.executeBotMove()
-                    else:
-                        self.board.executeBotMove()
+                    self.board.executeBotMove(self.turn) 
                     self.turn = 2 if self.turn == 1 else 1
-                    self.board.turn = 2 if self.board.turn == 1 else 1
+                    self.board.turn = self.turn
                 end = time.time()
                 print("Execution time:", end - start)
-                
-        else:
-            # BOT VS USER GUI MODE
-            if (self.system == "CMD"):
-                arr_of_time = []
-                start = time.time()
-                while (self.terminate_state() == 0):
-                    self.board.printBoard()
-                    player = self.player1 if self.turn == 1 else self.player2
-                    print("Turn: ", "PLAYER1" if self.turn == 1 else "PLAYER2")
-
-                    if (self.turn == 2):
-                        startbot = time.time()
-                        start_time = time.time()
-                        p = Process(target=self.board.executeBotMove())
-                        endbot = time.time()
-                        arr_of_time.append(endbot-startbot)
-                        p.start()
-                        p.join(timeout=self.timelimit)
-
-                        if p.is_alive():
-                            # If bot is still running
-                            p.terminate()
-                            print('Bot exceed time limit!')
-
-                        end_time = time.time()
-                        time_taken = end_time - start_time
-
-                        print("Time taken for bot", self.turn, ":", time_taken)
-
-                        self.timePlayer2 += time_taken
-                            
-                    else:
-                        if (self.system == "CMD"):
-                            chosen = False
-                            while (not(chosen)):
-                                pawn = input("Choose your pawn. Write in [x,y] without [] ")
-                            
-                                if not(re.search("[0-9][,][0-9]", pawn) == None):
-                                    fromx, fromy = pawn.split(",")
-                                    fromx = int(fromx)
-                                    fromy = int(fromy)
-                                    if (not(player.isExist_pawns(fromx, fromy))):
-                                        pawns = ''
-                                        for i in range (len(player.pawns)):
-                                            pawns += "(" + str(player.pawns[i].x) + "," + str(player.pawns[i].y) + ") "
-                                        print("Pawn not available in current coordinate! Available pawns :", pawns)
-                                    elif (len(self.board.getMoveFromTile(player, fromx, fromy)) == 0):
-                                        pawns = ''
-                                        for i in range (len(player.pawns)):
-                                            if (player.pawns[i].x != fromx and player.pawns[i].y != fromy):
-                                                pawns += "(" + str(player.pawns[i].x) + "," + str(player.pawns[i].y) + ") "
-                                        print("No move available, please choose other pawn! Available pawns :", pawns)
-                                    else:
-                                        chosen = True
-
-                            moved = False
-                            while not(moved):
-                                print("Available moves: ", self.board.getMoveFromTile(player, fromx, fromy))
-                                move = input("Where do you want to move? Write in [x,y] without [] ")
-                                
-                                if (not(re.search("[0-9][,][0-9]", move) == None)):
-                                    to_x, to_y = move.split(",")
-                                    to_x = int(to_x)
-                                    to_y = int(to_y)
-                                    if ((to_x, to_y) in self.board.getMoveFromTile(player, fromx, fromy)):
-                                        print("Executing moves...")
-                                        self.board.movePawn((fromy, fromx), (to_y, to_x))
-                                        print()
-                                        moved = True
-                                    else:
-                                        print("Invalid move!")
-
-                    self.turn = 2 if self.turn == 1 else 1
-                end = time.time()
-                print("Execution time:", end - start)
-                print("Bot execution time:", sum(arr_of_time))
-            else:
-                # BOT VS USER GUI MODE
-                arr_of_time = []
-                start = time.time()
-                self.gui = BoardGUI(self.board)
-                # self.gui.mainloop()
-                self.gui.move = True
-                while (self.terminate_state() == 0):
-                    if (self.turn == 2 and not(self.gui.move)):
-                        startbot = time.time()
-                        self.board.executeBotMove()
-                        endbot = time.time()
-                        arr_of_time.append(endbot - startbot)
-                        self.gui.drawPawn()
-                        self.gui.move = True
-                    else:
-                        self.gui.drawPawn()
-                        # self.gui.move = False
-                    self.turn = 2 if self.turn == 1 else 1
-                    self.board.turn = 2 if self.board.turn == 1 else 1
-                end = time.time()
-                print("Execution time:", end - start)
-                print("Bot execution time:", sum(arr_of_time))
                     
 
         won_player = "Player 1" if self.terminate_state() == 1 else "Player 2"
@@ -364,16 +243,25 @@ class BoardGUI(tk.Tk):
 
 
 if __name__ == "__main__":
+    '''
+    From xzz: Here I changed the code logic! I banned human player, and only support bot vs bot
+    The game will be played in CMD or GUI mode.
+    The command line should be:
+    python engine.py <boardsize> <timelimit> <gamesystem> [player1_bot] [player2_bot]
+    Very likely in the future, the parameter <evaluation_function_type> will be added! 
+    '''
     if len(sys.argv) < 4:
-        print("usage: python engine.py <boardsize> <timelimit> <gamesystem> [player]")
+        print("usage: python engine.py <boardsize> <timelimit> <gamesystem> [player1_bot] [player2_bot]")
         print("boardsize: 8, 10, 16")
         print("timelimit: any number in second")
         print("gamesystem: CMD/GUI")
-        print("player: RED/GREEN. Leave it blank to run bot vs bot")
+        print("player1_bot: M/MLS (Minimax/MinimaxLocalSearch)")
+        print("player2_bot: M/MLS (Minimax/MinimaxLocalSearch)")
         exit()
 
     boardsize, timelimit, system = sys.argv[1:4]
-    player = sys.argv[4] if len(sys.argv) == 5 else None
+    player1_bot = sys.argv[4] if len(sys.argv) > 4 else "M"
+    player2_bot = sys.argv[5] if len(sys.argv) > 5 else "M"
 
     if boardsize not in ["8", "10", "16"]:
         print("boardsize should be 8, 10, or 16")
@@ -389,19 +277,14 @@ if __name__ == "__main__":
 
     if (system not in ["CMD", "GUI"]):
         print("gamesystem should be CMD/GUI")
-    
-    bot = None
-    if player is not None:
-        player = player.upper()
-        if player not in ["RED", "GREEN"]:
-            print("player should be RED/GREEN")
-            exit()
-        print("Which bot do you want to fight? [Minimax/MinimaxLocalSearch]")
-        bot = input("Write the abbreviation of choices above [M/MLS]: ")
+        exit()
 
-        bot = bot.upper()
-        if bot not in ["M", "MLS"]:
-            print("bot should be M/MLS")
-            exit()
-    
-    game = Engine(boardsize, timelimit, player, system, bot)
+    player1_bot = player1_bot.upper()
+    player2_bot = player2_bot.upper()
+    # From xzz: Here is the available list of agents; After appending one agent, we should append it here
+    supported_agents = ["M", "MLS", "G", "R"]
+    if player1_bot not in supported_agents or player2_bot not in supported_agents:
+        print("player1_bot and player2_bot should be M/MLS")
+        exit()
+
+    game = Engine(boardsize, timelimit, None, system, (player1_bot, player2_bot))

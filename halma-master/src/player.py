@@ -1,4 +1,6 @@
+# player.py
 import copy
+from utils import COLOR_RED, COLOR_GREEN
 
 class Player:
   def __init__(self, color, boardSize):
@@ -25,7 +27,7 @@ class Player:
           self.home.append((boardSize - j + 1, boardSize - i + 1))
           self.goal.append((j, i))
 
-    if self.color == 'RED':
+    if self.color == COLOR_RED:
       # If an opposing player
       temp = copy.deepcopy(self.home)
       self.home = copy.deepcopy(self.goal)

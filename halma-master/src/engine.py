@@ -1,6 +1,8 @@
+# engine.py
 from player import Player
 from board import Board
 from coordinate import Coordinate
+from utils import COLOR_RED, COLOR_GREEN, COLOR_BLACK, PAWN_NONE, euclidean_distance, in_board
 import tkinter as tk
 import math
 import sys
@@ -9,16 +11,13 @@ import time
 from multiprocessing import Process
 import time
 
-# ...existing code...
-
 class Engine:
     def __init__(self, boardsize, timelimit, player, system, bots):
         self.player1 = Player("RED", boardsize)
         self.player2 = Player("GREEN", boardsize)
-        self.selfplay = True
-        self.board = Board(boardsize, timelimit, self.player1, self.player2, self.selfplay, bots) 
-        self.turn = 1  # 1 for player1, 2 for player2
-        self.bots = bots  # Tuple of bot types (player1_bot, player2_bot)
+        self.board = Board(boardsize, timelimit, self.player1, self.player2, bots)
+        self.turn = 1
+        self.bots = bots
         self.timelimit = self.board.timelimit
         self.timePlayer1 = 0
         self.timePlayer2 = 0
@@ -26,60 +25,66 @@ class Engine:
         self.start()
 
     def start(self):
-        if self.selfplay:
-            if self.system == "CMD":
-                # BOT VS BOT CMD MODE
-                start = time.time()
-                while self.terminate_state() == 0:
-                    self.board.printBoard()
-                    print("Turn: ", "PLAYER1" if self.turn == 1 else "PLAYER2")
-
-                    start_time = time.time()
-                    self.board.executeBotMove(self.turn)  # 调用 executeBotMove，传递当前回合
-                    end_time = time.time()
-                    time_taken = end_time - start_time
-
-                    print("Time taken for bot", self.turn, ":", time_taken)
-
-                    if self.turn == 1:
-                        self.timePlayer1 += time_taken
-                    else:
-                        self.timePlayer2 += time_taken
-
-                    self.turn = 2 if self.turn == 1 else 1
-                    self.board.turn = self.turn
+        if self.system == "CMD":
+            # BOT VS BOT CMD MODE
+            start = time.time()
+            while self.terminate_state() == 0:
                 self.board.printBoard()
-                end = time.time()
-                print("Execution time:", end - start)
-            else:
-                # BOT VS BOT GUI MODE
-                start = time.time()
-                self.gui = BoardGUI(self.board)
-                while self.terminate_state() == 0:
-                    self.gui.drawPawn()
-                    self.board.executeBotMove(self.turn) 
-                    self.turn = 2 if self.turn == 1 else 1
-                    self.board.turn = self.turn
-                end = time.time()
-                print("Execution time:", end - start)
-                    
+                print("Turn: " + ("PLAYER1" if self.turn == 1 else "PLAYER2"))
 
-        won_player = "Player 1" if self.terminate_state() == 1 else "Player 2"
-        print(won_player + " wins the game!")
-        if not self.selfplay:
-            print('Total time for bot:', self.timePlayer2)
+                start_time = time.time()
+                self.board.executeBotMove(self.turn)
+                end_time = time.time()
+                time_taken = end_time - start_time
+
+                print(f"Time taken for bot {self.turn}: {time_taken:.3f}s")
+
+                if self.turn == 1:
+                    self.timePlayer1 += time_taken
+                else:
+                    self.timePlayer2 += time_taken
+
+                self.turn = 2 if self.turn == 1 else 1
+                self.board.turn = self.turn
+            self.board.printBoard()
+            end = time.time()
+            print(f"Execution time: {end - start}")
         else:
-            print('Total time for bot 1:', self.timePlayer1)
-            print('Total time for bot 2:', self.timePlayer2)
+            # BOT VS BOT GUI MODE
+            start = time.time()
+            self.gui = BoardGUI(self.board)
+            while self.terminate_state() == 0:
+                self.gui.drawPawn()
+
+                start_time = time.time()
+                self.board.executeBotMove(self.turn)
+                end_time = time.time()
+                time_taken = end_time - start_time
+
+                if self.turn == 1:
+                    self.timePlayer1 += time_taken
+                else:
+                    self.timePlayer2 += time_taken
+
+                self.turn = 2 if self.turn == 1 else 1
+                self.board.turn = self.turn
+            end = time.time()
+            print(f"Execution time: {end - start}")
+
+        bot_won = "BOT 1" if self.terminate_state() == 1 else "BOT 2"
+        bot_type = self.bots[0] if self.terminate_state() == 1 else self.bots[1]
+        print(f"{bot_won}({bot_type}) wins the game!")
+        print(f"Total time for bot 1: {round(self.timePlayer1, 3)}s")
+        print(f"Total time for bot 2: {round(self.timePlayer2, 3)}s")
 
     def terminate_state(self):
         result = None
-        if(self.player1.isTerminate() and not(self.player2.isTerminate())):
+        if (self.player1.isTerminate() and not (self.player2.isTerminate())):
             result = 1
-        elif(self.player2.isTerminate() and not(self.player1.isTerminate())):
+        elif (self.player2.isTerminate() and not (self.player1.isTerminate())):
             result = 2
         else:
-            result = 0 #0 for notterminate
+            result = 0  # 0 for notterminate
         return result
 
 
@@ -105,7 +110,7 @@ class BoardGUI(tk.Tk):
 
             col_label = tk.Label(self, text=chr(i+97), font='Times', bg='#fff', fg='#000')
             col_label.grid(row=0, column=i+1)
-        
+
         self.tiles = {}
 
         # grid canvas
@@ -118,16 +123,16 @@ class BoardGUI(tk.Tk):
         self.columnconfigure(self.board_size + 1, minsize=50)
         self.rowconfigure(self.board_size + 1, minsize=50)
         self.canvas.bind("<Configure>", self.drawTiles)
-        self.board.selected_tuple= None
-    
+        self.board.selected_tuple = None
+
     def drawTiles(self, event=None):
         self.canvas.delete("tile")
         canvas_width = 600
         canvas_height = 600
         border_size = 1
         cell = int(canvas_height / self.board_size)
-        for col in range (self.board_size):
-            for row in range (self.board_size):
+        for col in range(self.board_size):
+            for row in range(self.board_size):
                 x1 = col * cell + border_size / 2
                 y1 = row * cell + border_size / 2
                 x2 = (col + 1) * cell - border_size / 2
@@ -148,7 +153,7 @@ class BoardGUI(tk.Tk):
                         color = '#AC352E'
                     else:
                         color = '#D0352E'
-                elif ((row + col ) > player2):
+                elif ((row + col) > player2):
                     if ((row + col) % 2 == 0):
                         color = '#12C47A'
                     else:
@@ -159,7 +164,7 @@ class BoardGUI(tk.Tk):
                     else:
                         color = '#BAA077'
                 tile = self.canvas.create_rectangle(x1, y1, x2, y2, tags="tile", width=0, fill=color)
-                self.tiles[col,row] = tile
+                self.tiles[col, row] = tile
                 self.canvas.tag_bind(tile, "<1>", lambda event, row=row, col=col: self.clicked(row+1, col+1))
 
         self.drawPawn()
@@ -176,12 +181,12 @@ class BoardGUI(tk.Tk):
 
         for i in range(len(self.player1Pawn)):
             col = self.player1Pawn[i].x - 1
-            row = self.player1Pawn[i].y - 1 
+            row = self.player1Pawn[i].y - 1
             x1 = col * cell + border_size / 2
             y1 = row * cell + border_size / 2
             x2 = (col + 1) * cell - border_size / 2
             y2 = (row + 1) * cell - border_size / 2
-            if (self.board.player1.color == "GREEN"):
+            if (self.board.player1.color == COLOR_GREEN):
                 pawn = self.canvas.create_oval(x1, y1, x2, y2, tags="pawn", width=0, fill="#67BF9B")
             else:
                 pawn = self.canvas.create_oval(x1, y1, x2, y2, tags="pawn", width=0, fill="#CF6E67")
@@ -189,12 +194,12 @@ class BoardGUI(tk.Tk):
 
         for i in range(len(self.player2Pawn)):
             col = self.player2Pawn[i].x - 1
-            row = self.player2Pawn[i].y - 1 
+            row = self.player2Pawn[i].y - 1
             x1 = col * cell + border_size / 2
             y1 = row * cell + border_size / 2
             x2 = (col + 1) * cell - border_size / 2
             y2 = (row + 1) * cell - border_size / 2
-            if (self.board.player1.color == "GREEN"):
+            if (self.board.player1.color == COLOR_GREEN):
                 pawn = self.canvas.create_oval(x1, y1, x2, y2, tags="pawn", width=0, fill="#CF6E67")
             else:
                 pawn = self.canvas.create_oval(x1, y1, x2, y2, tags="pawn", width=0, fill="#67BF9B")
@@ -204,7 +209,7 @@ class BoardGUI(tk.Tk):
         self.update()
 
     def clicked(self, row, column):
-        tile = self.tiles[column -1, row-1]
+        tile = self.tiles[column - 1, row-1]
         toBeBordered = []
         toBeBordered.append(tile)
         if (self.board.selected_tuple == None and self.board.player1.isExist_pawns(column, row)):
@@ -215,76 +220,27 @@ class BoardGUI(tk.Tk):
 
             validMoves = self.board.getAksiValid(pawn)
 
-            for i in range (len(validMoves)):
+            for i in range(len(validMoves)):
                 (x, y) = validMoves[i]
                 tile = self.tiles[x-1, y-1]
                 toBeBordered.append(tile)
 
-            for i in range (len(toBeBordered)):
-                self.canvas.itemconfigure(toBeBordered[i], outline="black", width = 2)
+            for i in range(len(toBeBordered)):
+                self.canvas.itemconfigure(toBeBordered[i], outline="black", width=2)
 
             self.board.selected_tuple = (column, row)
 
         elif (self.board.selected_tuple != None and (column, row) in self.board.getAksiValid(self.board.player1.getPawn(self.board.selected_tuple[0], self.board.selected_tuple[1]))):
-            (x,y) = self.board.selected_tuple
+            (x, y) = self.board.selected_tuple
             self.board.movePawn((y, x), (row, column))
-            for i in range (self.board_size):
-                for j in range (self.board_size):
-                    self.canvas.itemconfigure(self.tiles[i,j], outline="black", width = 0)
+            for i in range(self.board_size):
+                for j in range(self.board_size):
+                    self.canvas.itemconfigure(self.tiles[i, j], outline="black", width=0)
             self.board.selected_tuple = None
             self.move = False
         else:
             self.board.selected_tuple = None
-            for i in range (self.board_size):
-                for j in range (self.board_size):
-                    self.canvas.itemconfigure(self.tiles[i,j], outline="black", width = 0)
+            for i in range(self.board_size):
+                for j in range(self.board_size):
+                    self.canvas.itemconfigure(self.tiles[i, j], outline="black", width=0)
         self.update()
-
-
-
-if __name__ == "__main__":
-    '''
-    From xzz: Here I changed the code logic! I banned human player, and only support bot vs bot
-    The game will be played in CMD or GUI mode.
-    The command line should be:
-    python engine.py <boardsize> <timelimit> <gamesystem> [player1_bot] [player2_bot]
-    Very likely in the future, the parameter <evaluation_function_type> will be added! 
-    '''
-    if len(sys.argv) < 4:
-        print("usage: python engine.py <boardsize> <timelimit> <gamesystem> [player1_bot] [player2_bot]")
-        print("boardsize: 8, 10, 16")
-        print("timelimit: any number in second")
-        print("gamesystem: CMD/GUI")
-        print("player1_bot: M/MLS (Minimax/MinimaxLocalSearch)")
-        print("player2_bot: M/MLS (Minimax/MinimaxLocalSearch)")
-        exit()
-
-    boardsize, timelimit, system = sys.argv[1:4]
-    player1_bot = sys.argv[4] if len(sys.argv) > 4 else "M"
-    player2_bot = sys.argv[5] if len(sys.argv) > 5 else "M"
-
-    if boardsize not in ["8", "10", "16"]:
-        print("boardsize should be 8, 10, or 16")
-        exit()    
-
-    if not boardsize.isdigit() or not timelimit.isdigit():
-        print("boardsize and timelimit should be integer")
-        exit()
-
-    boardsize = int(boardsize)
-    timelimit = int(timelimit)
-    system = system.upper()
-
-    if (system not in ["CMD", "GUI"]):
-        print("gamesystem should be CMD/GUI")
-        exit()
-
-    player1_bot = player1_bot.upper()
-    player2_bot = player2_bot.upper()
-    # From xzz: Here is the available list of agents; After appending one agent, we should append it here
-    supported_agents = ["M", "MLS", "G", "R"]
-    if player1_bot not in supported_agents or player2_bot not in supported_agents:
-        print("player1_bot and player2_bot should be M/MLS")
-        exit()
-
-    game = Engine(boardsize, timelimit, None, system, (player1_bot, player2_bot))

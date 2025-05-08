@@ -5,10 +5,10 @@
 ### Usage
 
 ```
-python game.py [-h] [--boardsize] [--timelimit] [--gamesystem] [--player1] [--player2]
+python game.py [-h] [-s {8,10,12}] [-p1 {H,M,MLS,G,R}] [-p2 {H,M,MLS,G,R}]
 ```
 
-To get full help, run
+To get full help, please run
 
 ```shell
 python game.py --help
@@ -16,4 +16,4 @@ python game.py --help
 
 ### Credits
 
-- [indrafnugroho/halma](https://github.com/indrafnugroho/halma)
+- The GUI and framework are based on [indrafnugroho/halma](https://github.com/indrafnugroho/halma).

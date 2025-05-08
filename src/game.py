@@ -8,8 +8,8 @@ from utils import *
 
 def readCommand(argv):
     parser = argparse.ArgumentParser(description='CS181 Final Project: Halma AI')
-    parser.add_argument('-s', '--boardsize', type=int, choices=[8, 10, 12], default=8,
-                        help='Board size: 8, 10, or 12.')
+    parser.add_argument('-s', '--boardsize', type=int, choices=[4, 8, 10, 12], default=8,
+                        help='Board size: 4, 8, 10, or 12.')
     parser.add_argument('-p1', '--player1', type=str, choices=['H', 'M', 'MLS', 'G', 'R'], default='H',
                         help='Player 1 type: H, M, MLS, G, or R.')
     parser.add_argument('-p2', '--player2', type=str, choices=['H', 'M', 'MLS', 'G', 'R'], default='H',

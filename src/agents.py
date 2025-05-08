@@ -185,6 +185,8 @@ class MinimaxPlayer(AgentPlayer):
                     
         return best_value, best_action
     
+
+# TODO: Implement more agents
     
 def evaluation(board, player):
     val = 0
@@ -213,3 +215,5 @@ def evaluation(board, player):
     # 取反以便最大化评估值（距离越小越好）
     val *= -1
     return val
+
+# TODO: Implement more evaluation functions

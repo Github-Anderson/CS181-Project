@@ -37,7 +37,6 @@ class Board:
     def __init__(self, boardsize, players):
         self.boardsize = boardsize
         self.players = players
-        self.turn = 1
         self.board = [[None for _ in range(boardsize)] for _ in range(boardsize)]
         self.initialize_board()
 
@@ -54,6 +53,7 @@ class Board:
         return "\n".join(rows)
 
     def initialize_board(self):
+        self.turn = 1
         if len(self.players) == 2:
             self.players[0].set_index(0)
             self.players[1].set_index(3)
@@ -74,13 +74,6 @@ class Board:
             pass
     
     def get_home_area(self, player): 
-        """
-        Get the home area for the given player.
-        Args:
-            player: The player for whom to get the home area.
-        Returns:
-            List of tuples representing the coordinates of the home area.
-        """
         home = []
         size = min(6, self.boardsize // 2)
         if player.index == 0:
@@ -128,13 +121,6 @@ class Board:
         return goal
 
     def get_actions(self, player : Player) -> list[tuple[int, int, int, int]]:
-        """
-        Generate all possible actions for the given player on the current board state.
-        Args:
-            player: The player for whom to generate possible actions.
-        Returns:
-            List of tuples, each representing a valid move (start_x, start_y, end_x, end_y).
-        """
         actions = set()
         directions = list(DIRECTION_OFFSET.values())
         
@@ -194,11 +180,6 @@ class Board:
         return sorted(filtered_actions)
     
     def apply_action(self, action):
-        """
-        Apply the given action to the board.
-        Args:
-            action: A tuple (start_x, start_y, end_x, end_y) representing the move.
-        """
         start_x, start_y, end_x, end_y = action
         pawn = self.board[start_x][start_y]
         if pawn is not None:
@@ -210,12 +191,6 @@ class Board:
             raise ValueError("Invalid move: No pawn at starting position.")
     
     def get_state(self):
-        """
-        判断游戏是否结束
-        Returns:
-            None: 游戏未结束
-            dict: 包含游戏结束信息，winner为获胜者
-        """
         # 检查每个玩家的棋子是否全部进入对方的家
         for player_idx, player in enumerate(self.players):
             # 获取对方的家

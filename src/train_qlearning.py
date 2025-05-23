@@ -1,53 +1,77 @@
 from board import Board
-from agents import MinimaxPlayer, QLearningAgent
+from agents import QLearningAgent, evaluation
 from tqdm import tqdm
 
-def train_qlearning(episodes=10):
-    agent = QLearningAgent("RED", alpha=0.1, gamma=0.9, epsilon=0.1)
+def train_qlearning(episodes=50):
     board_size = 8
-    player1 = agent
-    player2 = MinimaxPlayer("GREEN", depth=2)  # 对手为 Minimax 玩家，设置搜索深度为 2
-    board = Board(board_size, (player1, player2))
-    player1.set_board(board)  # 设置棋盘引用
-    player2.set_board(board)
+    agent_red = QLearningAgent("RED", alpha=0.1, gamma=0.9, epsilon=0.1)
+    agent_green = QLearningAgent("GREEN", alpha=0.1, gamma=0.9, epsilon=0.1)
+    board = Board(board_size, (agent_red, agent_green))
+    agent_red.set_board(board)
+    agent_green.set_board(board)
+
     for episode in tqdm(range(episodes)):
         board.initialize_board()
-        state = str(board)  # 将棋盘状态序列化为字符串
+        state_red = agent_red.serialize_board(board)
+        state_green = agent_green.serialize_board(board)
         done = False
+        eval_red = evaluation(board, agent_red)
+        eval_green = evaluation(board, agent_green)
 
         while not done:
-            # Player 1 (Q-learning 玩家) 的回合
-            if board.turn % 2 == 1:  # 假设奇数回合是 player1 的回合
-                actions = board.get_actions(player1)
+            # RED 回合
+            if board.turn % 2 == 1:
+                actions = board.get_actions(agent_red)
                 if not actions:
                     break
-
-                action = player1.get_action(actions)  # 使用 Q-learning 玩家选择动作
+                action = agent_red.get_action(actions)
                 board.apply_action(action)
-                reward = 1 if board.get_state() and board.get_state()["winner"] == player1 else 0
-                next_state = str(board)
-                next_actions = board.get_actions(player1)
-                player1.update_q_value(state, action, reward, next_state, next_actions)
-                state = next_state
-
-            # Player 2 (Minimax 玩家) 的回合
-            else:  # 偶数回合是 player2 的回合
-                actions = board.get_actions(player2)
+                eval_red_new = evaluation(board, agent_red)
+                reward = eval_red_new - eval_red
+                eval_red = eval_red_new
+                # 终局奖励
+                state_info = board.get_state()
+                if state_info:
+                    winner = state_info.get("winner")
+                    if winner == agent_red:
+                        reward += 100
+                    elif winner == agent_green:
+                        reward -= 100
+                next_state = agent_red.serialize_board(board)
+                next_actions = board.get_actions(agent_red)
+                agent_red.update_q_value(state_red, action, reward, next_state, next_actions)
+                state_red = next_state
+            # GREEN 回合
+            else:
+                actions = board.get_actions(agent_green)
                 if not actions:
                     break
-
-                action = player2.get_action(actions)  # 使用 Minimax 玩家选择动作
+                action = agent_green.get_action(actions)
                 board.apply_action(action)
+                eval_green_new = evaluation(board, agent_green)
+                reward = eval_green_new - eval_green
+                eval_green = eval_green_new
+                state_info = board.get_state()
+                if state_info:
+                    winner = state_info.get("winner")
+                    if winner == agent_green:
+                        reward += 100
+                    elif winner == agent_red:
+                        reward -= 100
+                next_state = agent_green.serialize_board(board)
+                next_actions = board.get_actions(agent_green)
+                agent_green.update_q_value(state_green, action, reward, next_state, next_actions)
+                state_green = next_state
 
-            # 检查游戏是否结束
             if board.get_state():
                 done = True
 
         if (episode + 1) % 100 == 0:
             print(f"Episode {episode + 1}/{episodes} completed.")
 
-    player1.save_model("qlearning_model.txt")
-    print("Training completed and model saved.")
+    agent_red.save_model("qlearning_model_red.txt")
+    agent_green.save_model("qlearning_model_green.txt")
+    print("Training completed and models saved.")
 
 if __name__ == "__main__":
     train_qlearning()

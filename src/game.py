@@ -38,7 +38,7 @@ if __name__ == "__main__":
         player1 = MCTSPlayer("RED")
     elif player1 == "QL":
         player1 = QLearningAgent("RED", epsilon=0)
-        player1.load_model("qlearning_model.txt")
+        player1.load_model("qlearning_model_red.txt")
 
     if player2 == "H":
         player2 = HumanPlayer("GREEN")
@@ -54,7 +54,7 @@ if __name__ == "__main__":
         player2 = MCTSPlayer("GREEN")
     elif player2 == "QL":
         player2 = QLearningAgent("GREEN", epsilon=0)
-        player2.load_model("qlearning_model.txt")
+        player2.load_model("qlearning_model_green.txt")
     
     board = Board(boardsize, (player1, player2))
 

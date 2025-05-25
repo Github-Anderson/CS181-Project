@@ -51,6 +51,31 @@ class Board:
                     row.append(self.board[i][j].color[0])
             rows.append(" ".join(row))
         return "\n".join(rows)
+    
+    def reset(self):
+        """重置棋盘到初始状态"""
+        # 清空棋盘
+        self.board = [[None for _ in range(self.boardsize)] for _ in range(self.boardsize)]
+        self.initialize_board()
+
+    def clone(self):
+        """创建棋盘的深度复制"""
+        import copy
+        new_board = Board(self.boardsize, self.players)
+        new_board.board = [[None for _ in range(self.boardsize)] for _ in range(self.boardsize)]
+        
+        # 复制棋子
+        for i in range(self.boardsize):
+            for j in range(self.boardsize):
+                if self.board[i][j]:
+                    pawn = self.board[i][j]
+                    new_pawn = Pawn(new_board, pawn.player, pawn.x, pawn.y)
+                    new_pawn.is_in_goal = pawn.is_in_goal
+                    new_pawn.has_left_home = pawn.has_left_home
+                    new_board.board[i][j] = new_pawn
+        
+        new_board.turn = self.turn
+        return new_board
 
     def initialize_board(self):
         self.turn = 1

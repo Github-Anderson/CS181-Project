@@ -10,10 +10,10 @@ def readCommand(argv):
     parser = argparse.ArgumentParser(description='CS181 Final Project: Halma AI')
     parser.add_argument('-s', '--boardsize', type=int, choices=[4, 8, 10, 12], default=8,
                         help='Board size: 4, 8, 10, or 12.')
-    parser.add_argument('-p1', '--player1', type=str, choices=['H', 'M', 'MLS', 'G', 'R', "QL", "MCTS"], default='H',
-                        help='Player 1 type: H, M, MLS, G, R, QL, or MCTS.')
-    parser.add_argument('-p2', '--player2', type=str, choices=['H', 'M', 'MLS', 'G', 'R', "QL", "MCTS"], default='H',
-                        help='Player 2 type: H, M, MLS, G, R, QL, or MCTS.')
+    parser.add_argument('-p1', '--player1', type=str, choices=['H', 'M', 'MLS', 'G', 'R', "AQL", "MCTS"], default='H',
+                        help='Player 1 type: H, M, MLS, G, R, AQL, or MCTS.')
+    parser.add_argument('-p2', '--player2', type=str, choices=['H', 'M', 'MLS', 'G', 'R', "AQL", "MCTS"], default='H',
+                        help='Player 2 type: H, M, MLS, G, R, AQL, or MCTS.')
     args = parser.parse_args(argv)
     return args
 
@@ -36,9 +36,8 @@ if __name__ == "__main__":
         player1 = RandomPlayer("RED")
     elif player1 == "MCTS":
         player1 = MCTSPlayer("RED")
-    elif player1 == "QL":
-        player1 = QLearningAgent("RED", epsilon=0)
-        player1.load_model("qlearning_model_red.txt")
+    elif player1 == "AQL":
+        player1 = ApproximateQLearningPlayer("RED")
 
     if player2 == "H":
         player2 = HumanPlayer("GREEN")
@@ -52,9 +51,8 @@ if __name__ == "__main__":
         player2 = RandomPlayer("GREEN")
     elif player2 == "MCTS":
         player2 = MCTSPlayer("GREEN")
-    elif player2 == "QL":
-        player2 = QLearningAgent("GREEN", epsilon=0)
-        player2.load_model("qlearning_model_green.txt")
+    elif player2 == "AQL":
+        player2 = ApproximateQLearningPlayer("RED")
     
     board = Board(boardsize, (player1, player2))
 

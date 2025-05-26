@@ -41,7 +41,8 @@ class Engine:
         if isinstance(self.current_player, HumanPlayer):
             if not self.waiting_for_human:
                 self.waiting_for_human = True
-                self.gui.update_status(f"{self.current_player.color} 玩家回合 - 请选择棋子")
+                color_name = self.gui.color_names.get(self.current_player.color, self.current_player.color)
+                self.gui.update_status(f"**{color_name}** 玩家回合 - 请选择棋子")
             elif self.human_action:
                 # 人类玩家已经选择了动作
                 self.turn_count += 1
@@ -51,7 +52,8 @@ class Engine:
                 self.next_turn()
         else:
             # AI玩家自动行动
-            self.gui.update_status(f"{self.current_player.color} 玩家回合 - AI思考中...")
+            color_name = self.gui.color_names.get(self.current_player.color, self.current_player.color)
+            self.gui.update_status(f"**{color_name}** 玩家回合 - AI思考中...")
             self.gui.update()  # 刷新界面显示
             
             # 添加短暂延迟，让玩家能看到AI行动
@@ -91,34 +93,61 @@ class BoardGUI(tk.Tk):
         # initialize parent tk class
         tk.Tk.__init__(self, *args, **kwargs)
 
+        # 颜色名称映射
+        self.color_names = {
+            'RED': '红色',
+            'GREEN': '绿色', 
+            'BLUE': '蓝色',
+            'YELLOW': '黄色'
+        }
+
+        # 颜色名称到实际颜色值的映射
+        self.color_values = {
+            'RED': '#FF5252',
+            'GREEN': '#4CDF50',
+            'BLUE': '#00BFFF', 
+            'YELLOW': '#FFDC35'
+        }
+
         # 自定义颜色方案
         self.colors = {
             'bg': '#F0F0F0',
             'frame': '#E0E0E0',
-
-            'player1_dark': '#AC352E',
-            'player1_light': '#D0352E',
-            'player2_dark': '#0FA868', 
-            'player2_light': '#12C47A',
-
+            
             'neutral_dark': '#ECCB96',
             'neutral_light': '#BAA077',
 
-            'player1_pawn': '#FF5252', 
-            'player1_pawn_highlight': '#FFB0B0',
-            'player1_pawn_border': '#8C150E',
+            'player1_pawn': '#FF8899',
+            'player1_pawn_border': '#AA4477',
 
-            'player2_pawn': '#4CDF50',
-            'player2_pawn_highlight': '#B0FFB0',
-            'player2_pawn_border': '#0F8858',
+            'player1_light': '#D0352E',
+            'player1_dark': '#AC352E',
 
-            'highlight': '#FFEC45',
+            'player2_pawn': '#77DD77',
+            'player2_pawn_border': '#779977',
+
+            'player2_light': '#12C47A',
+            'player2_dark': '#0FA868', 
+
+            'player3_pawn': '#77BBDD',
+            'player3_pawn_border': '#7799CC',
+
+            'player3_light': "#25A3F2",
+            'player3_dark': "#1F7FDF",
+
+            'player4_pawn': '#FFDD88',
+            'player4_pawn_border': "#BB9955",
+
+            'player4_light': "#F1C02F",
+            'player4_dark': "#CFA028",
+
+            'highlight': '#FFDC35',
             'valid_move': '#8A7047',
             'text': '#212121'
         }
 
         # metadata
-        self.title('Halma - 跳棋游戏')
+        self.title('Halma')
         self.resizable(True, True)
         self.configure(bg=self.colors['bg'])  # 更柔和的背景色
         
@@ -202,10 +231,10 @@ class BoardGUI(tk.Tk):
         status_frame = tk.Frame(main_frame, bg=self.colors['frame'], padx=10, pady=10)
         status_frame.pack(fill='x', pady=(15, 0))
         
-        status_label = tk.Label(status_frame, textvariable=self.status_var, 
+        self.status_label = tk.Label(status_frame, textvariable=self.status_var, 
                               font=self.default_font, bg=self.colors['frame'], 
                               fg=self.colors['text'])
-        status_label.pack(fill='x')
+        self.status_label.pack(fill='x')
         
         # 按钮区域
         button_frame = tk.Frame(main_frame, bg=self.colors['bg'], pady=10)
@@ -265,9 +294,42 @@ class BoardGUI(tk.Tk):
             self.after(10, self.engine.game_loop)
     
     def update_status(self, message):
-        """更新状态栏显示"""
-        self.status_var.set(message)
-        # 更新回合计数 - 实际应用中需要从游戏逻辑获取回合数
+        """更新状态栏显示，支持加粗格式和颜色"""
+        # 检查是否包含加粗标记
+        if '**' in message:
+            # 创建富文本标签来显示加粗效果
+            parts = message.split('**')
+            if hasattr(self, 'status_label'):
+                self.status_label.destroy()
+            
+            # 创建新的状态标签框架
+            status_frame = self.status_label.master
+            self.status_label = tk.Frame(status_frame, bg=self.colors['frame'])
+            self.status_label.pack(fill='x')
+            
+            # 添加文本部分
+            for i, part in enumerate(parts):
+                if part:  # 跳过空字符串
+                    if i % 2 == 1:  # 加粗的部分
+                        # 检查是否是颜色名称，设置对应颜色
+                        color = self.colors['text']  # 默认颜色
+                        for eng_color, cn_color in self.color_names.items():
+                            if cn_color in part:
+                                color = self.color_values[eng_color]
+                                break
+                        
+                        font = (self.default_font[0], self.default_font[1], 'bold')
+                        label = tk.Label(self.status_label, text=part, font=font,
+                                       bg=self.colors['frame'], fg=color)
+                    else:
+                        font = self.default_font
+                        label = tk.Label(self.status_label, text=part, font=font,
+                                       bg=self.colors['frame'], fg=self.colors['text'])
+                    label.pack(side='left')
+        else:
+            self.status_var.set(message)
+        
+        # 更新回合计数
         if hasattr(self.engine, 'turn_count'):
             self.turn_var.set(f"步数: {self.engine.turn_count}")
 
@@ -281,8 +343,14 @@ class BoardGUI(tk.Tk):
         cell = min(width, height) / self.board_size  # 每个格子大小
         
         # 获取玩家的家区域
-        player1_home = set(self.board.get_home_area(self.board.players[0]))
-        player2_home = set(self.board.get_home_area(self.board.players[1]))
+        if len(self.board.players) == 2:
+            player1_home = set(self.board.get_home_area(self.board.players[0]))
+            player2_home = set(self.board.get_home_area(self.board.players[1]))
+        elif len(self.board.players) == 4:
+            player1_home = set(self.board.get_home_area(self.board.players[0]))
+            player2_home = set(self.board.get_home_area(self.board.players[1]))
+            player3_home = set(self.board.get_home_area(self.board.players[2]))
+            player4_home = set(self.board.get_home_area(self.board.players[3]))
         
         # 先绘制整个棋盘背景
         # board_bg = self.canvas.create_rectangle(0, 0, width, height, fill=self.colors['frame'], width=0, tags="tile")
@@ -298,15 +366,32 @@ class BoardGUI(tk.Tk):
                 y2 = (row + 1) * cell - border_size
 
                 # 根据位置确定颜色
-                if (row, col) in player1_home:
-                    # 玩家1区域
-                    color = self.colors['player1_dark'] if (row + col) % 2 == 0 else self.colors['player1_light']
-                elif (row, col) in player2_home:
-                    # 玩家2区域
-                    color = self.colors['player2_dark'] if (row + col) % 2 == 0 else self.colors['player2_light']
-                else:
-                    # 中立区域
-                    color = self.colors['neutral_dark'] if (row + col) % 2 == 0 else self.colors['neutral_light']
+                if len(self.board.players) == 2:
+                    if (row, col) in player1_home:
+                        # 玩家1区域
+                        color = self.colors['player1_dark'] if (row + col) % 2 == 0 else self.colors['player1_light']
+                    elif (row, col) in player2_home:
+                        # 玩家2区域
+                        color = self.colors['player2_dark'] if (row + col) % 2 == 0 else self.colors['player2_light']
+                    else:
+                        # 中立区域
+                        color = self.colors['neutral_dark'] if (row + col) % 2 == 0 else self.colors['neutral_light']
+                elif len(self.board.players) == 4:
+                    if (row, col) in player1_home:
+                        # 玩家1区域
+                        color = self.colors['player1_dark'] if (row + col) % 2 == 0 else self.colors['player1_light']
+                    elif (row, col) in player2_home:
+                        # 玩家2区域
+                        color = self.colors['player2_dark'] if (row + col) % 2 == 0 else self.colors['player2_light']
+                    elif (row, col) in player3_home:
+                        # 玩家3区域
+                        color = self.colors['player3_dark'] if (row + col) % 2 == 0 else self.colors['player3_light']
+                    elif (row, col) in player4_home:
+                        # 玩家4区域
+                        color = self.colors['player4_dark'] if (row + col) % 2 == 0 else self.colors['player4_light']
+                    else:
+                        # 中立区域
+                        color = self.colors['neutral_dark'] if (row + col) % 2 == 0 else self.colors['neutral_light']
                 
                 # 创建格子 - 添加轻微的阴影效果
                 tile = self.canvas.create_rectangle(x1, y1, x2, y2, tags="tile", width=0,fill=color)
@@ -347,15 +432,17 @@ class BoardGUI(tk.Tk):
                     # 根据棋子颜色绘制
                     if pawn.color == "RED":
                         fill_color = self.colors['player1_pawn']
-                        outline_color = self.colors['player1_dark']
-                        highlight_color = self.colors['player1_pawn_highlight']
                         border_color = self.colors['player1_pawn_border']
-                    else:  # "GREEN"
+                    elif pawn.color == "GREEN":
                         fill_color = self.colors['player2_pawn']
-                        outline_color = self.colors['player2_dark']
-                        highlight_color = self.colors['player2_pawn_highlight']
                         border_color = self.colors['player2_pawn_border']
-                    
+                    elif pawn.color == "BLUE":
+                        fill_color = self.colors['player3_pawn']
+                        border_color = self.colors['player3_pawn_border']
+                    elif pawn.color == "YELLOW":
+                        fill_color = self.colors['player4_pawn']
+                        border_color = self.colors['player4_pawn_border']
+
                     # 创建光晕效果
                     pawn_border = self.canvas.create_oval(
                         cx-radius-2, cy-radius-2, 
@@ -478,7 +565,8 @@ class BoardGUI(tk.Tk):
             # 高亮显示所有可能的移动位置
             self.highlight_valid_moves()
             # 更新状态信息
-            self.update_status(f"{current_player.color} 玩家回合 - 请选择目标位置")
+            color_name = self.color_names.get(current_player.color, current_player.color)
+            self.update_status(f"**{color_name}** 玩家回合 - 请选择目标位置")
     
     def reset_selection(self):
         """重置选择状态"""
@@ -494,7 +582,8 @@ class BoardGUI(tk.Tk):
         # 删除所有移动标记
         self.canvas.delete("move_marker")
         
-        self.update_status(f"{current_player.color} 玩家回合 - 请选择棋子")
+        color_name = self.color_names.get(current_player.color, current_player.color)
+        self.update_status(f"**{color_name}** 玩家回合 - 请选择棋子")
         # 重置选择状态
         self.selected_pawn = None
         self.valid_moves = []

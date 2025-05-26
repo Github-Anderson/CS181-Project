@@ -10,10 +10,10 @@ def readCommand(argv):
     parser = argparse.ArgumentParser(description='CS181 Final Project: Halma AI')
     parser.add_argument('-s', '--boardsize', type=int, choices=[4, 8, 10, 12], default=8,
                         help='Board size: 4, 8, 10, or 12.')
-    parser.add_argument('-p1', '--player1', type=str, choices=['H', 'M', 'MLS', 'G', 'R', "AQL", "MCTS"], default='H',
-                        help='Player 1 type: H, M, MLS, G, R, AQL, or MCTS.')
-    parser.add_argument('-p2', '--player2', type=str, choices=['H', 'M', 'MLS', 'G', 'R', "AQL", "MCTS"], default='H',
-                        help='Player 2 type: H, M, MLS, G, R, AQL, or MCTS.')
+    parser.add_argument('-p1', '--player1', type=str, choices=['H', 'M', 'MLS', 'G', 'R', "AQL", "MCTS", "NAQL"], default='H',
+                        help='Player 1 type: H, M, MLS, G, R, AQL, MCTS, or NAQL.')
+    parser.add_argument('-p2', '--player2', type=str, choices=['H', 'M', 'MLS', 'G', 'R', "AQL", "MCTS", "NAQL"], default='H',
+                        help='Player 2 type: H, M, MLS, G, R, AQL, MCTS, or NAQL.')
     args = parser.parse_args(argv)
     return args
 
@@ -38,6 +38,10 @@ if __name__ == "__main__":
         player1 = MCTSPlayer("RED")
     elif player1 == "AQL":
         player1 = ApproximateQLearningPlayer("RED")
+    elif player1 == "NAQL":
+        player1 = Neural_ApproximateQLearningPlayer("RED", if_train=False)
+        player1.load_model("sente_agent_ep300.pth")
+        print("Weight successfully loaded!")
 
     if player2 == "H":
         player2 = HumanPlayer("GREEN")
@@ -52,8 +56,12 @@ if __name__ == "__main__":
     elif player2 == "MCTS":
         player2 = MCTSPlayer("GREEN")
     elif player2 == "AQL":
-        player2 = ApproximateQLearningPlayer("RED")
-    
+        player2 = ApproximateQLearningPlayer("GREEN")
+    elif player2 == "NAQL":
+        player2 = Neural_ApproximateQLearningPlayer("GREEN", if_train=False)
+        player2.load_model("gote_agent_ep300.pth")
+        print("Weight successfully loaded!")
+
     board = Board(boardsize, (player1, player2))
 
     if not isinstance(player1, HumanPlayer) and not isinstance(player1, RandomPlayer):

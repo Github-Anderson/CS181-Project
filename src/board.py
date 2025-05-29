@@ -80,6 +80,9 @@ class Board:
 
     def initialize_board(self):
         """初始化棋盘"""
+        for player in self.players:
+            player.score = 0
+
         self.turn = 1
         if len(self.players) == 2:
             self.players[0].set_index(0)
@@ -241,17 +244,108 @@ class Board:
         # 返回过滤后的动作
         return sorted(filtered_actions)
     
+    def get_actions_with_jump(self, player: Player) -> list[tuple[tuple[int, int, int, int], int]]:
+        """获取当前玩家的所有合法动作及其连跳次数"""
+        actions_with_jumps = []
+        directions = list(DIRECTION_OFFSET.values())
+        
+        home_area = set(self.get_home_area(player))
+        goal_area = set(self.get_goal_area(player))
+
+        def in_board(x, y):
+            return 0 <= x < self.boardsize and 0 <= y < self.boardsize
+
+        def jump_moves(x, y, visited, jump_count=0):
+            results = []
+            for dx, dy in directions:
+                mx, my = x + dx, y + dy
+                jx, jy = x + 2*dx, y + 2*dy
+                # check hop over occupied and land on empty
+                if (
+                    in_board(jx, jy)
+                    and self.board[mx][my] is not None
+                    and self.board[jx][jy] is None
+                    and (jx, jy) not in visited
+                ):
+                    current_jump_count = jump_count + 1
+                    results.append((jx, jy, current_jump_count))
+                    # recursive hops
+                    results.extend(jump_moves(jx, jy, visited | {(jx, jy)}, current_jump_count))
+            return results
+
+        for i in range(self.boardsize):
+            for j in range(self.boardsize):
+                pawn = self.board[i][j]
+                if pawn and pawn.player == player:
+                    # simple one-step moves (jump_count = 0)
+                    for dx, dy in directions:
+                        ni, nj = i + dx, j + dy
+                        if in_board(ni, nj) and self.board[ni][nj] is None:
+                            actions_with_jumps.append(((i, j, ni, nj), 0))
+                    
+                    # multi-hop jumps
+                    for nx, ny, jump_count in jump_moves(i, j, {(i, j)}):
+                        actions_with_jumps.append(((i, j, nx, ny), jump_count))
+
+        # 过滤不合法的动作
+        filtered_actions = []
+        for action_tuple in actions_with_jumps:
+            action, jump_count = action_tuple
+            start_x, start_y, end_x, end_y = action
+            pawn = self.board[start_x][start_y]
+            
+            # 已到达目标区域的棋子不能离开目标区域
+            if hasattr(pawn, 'is_in_goal') and pawn.is_in_goal and (end_x, end_y) not in goal_area:
+                continue
+            
+            # 已离开家的棋子不能回到家
+            if hasattr(pawn, 'has_left_home') and pawn.has_left_home and (end_x, end_y) in home_area:
+                continue
+            
+            filtered_actions.append(action_tuple)
+        
+        # 返回过滤后的动作（按动作排序以保证确定性）
+        return sorted(filtered_actions, key=lambda x: x[0])
+    
     def apply_action(self, action):
         start_x, start_y, end_x, end_y = action
         pawn = self.board[start_x][start_y]
         if pawn is not None:
+            # 检查棋子移动前是否已经在目标区域
+            goal_area = set(self.get_goal_area(pawn.player))
+            was_in_goal = hasattr(pawn, 'is_in_goal') and pawn.is_in_goal
+            
+            # 检查连跳次数
+            jump_count = self._get_jump_count(action, pawn.player)
+            
+            # 移动棋子
             self.board[end_x][end_y] = pawn
             self.board[start_x][start_y] = None
             pawn.move(end_x, end_y)
+            
+            # 检查棋子移动后是否进入目标区域（首次进入）
+            is_now_in_goal = (end_x, end_y) in goal_area
+            if is_now_in_goal and not was_in_goal:
+                # 棋子首次进入目标区域，玩家得5分
+                pawn.player.score += 5
+            
+            # 连跳得分：连跳n次得n分
+            if jump_count > 0:
+                pawn.player.score += jump_count
+            
             self.turn += 1
         else:
             raise ValueError("Invalid move: No pawn at starting position.")
-        
+    
+    def _get_jump_count(self, action, player):
+        """计算指定动作的连跳次数"""
+        actions_with_jumps = self.get_actions_with_jump(player)
+        for action_tuple in actions_with_jumps:
+            stored_action, jump_count = action_tuple
+            if stored_action == action:
+                return jump_count
+        return 0
+    
     def get_max_score(self) -> int:
         """获取当前游戏模式下的最大分数"""
         max_score = 0

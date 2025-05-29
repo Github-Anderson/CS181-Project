@@ -81,6 +81,9 @@ class Engine:
         # 重绘棋盘
         self.gui.draw_pawns()
         
+        # 更新分数显示
+        self.gui.update_scores()
+        
         # 继续游戏循环
         self.gui.after(10, self.game_loop)
 
@@ -184,6 +187,18 @@ class BoardGUI(tk.Tk):
         # 游戏信息变量
         self.turn_var = tk.StringVar()
         self.turn_var.set("步数: 0")
+        
+        # 分数显示变量
+        self.score_vars = {}
+        for player in self.board.players:
+            color_name = self.color_names.get(player.color, player.color)
+            # 分别存储颜色名称和分数
+            self.score_vars[player.color] = {
+                'name': tk.StringVar(),
+                'score': tk.StringVar()
+            }
+            self.score_vars[player.color]['name'].set(color_name)
+            self.score_vars[player.color]['score'].set(": 0分")
 
         # 创建界面框架
         self.create_ui_frame()
@@ -213,6 +228,33 @@ class BoardGUI(tk.Tk):
                              bg=self.colors['bg'], fg=self.colors['text'])
         turn_label.pack(side='left')
         
+        # 分数显示区域
+        score_frame = tk.Frame(info_frame, bg=self.colors['bg'])
+        score_frame.pack(side='right')
+        
+        self.score_labels = {}
+        for i, player in enumerate(self.board.players):
+            # 创建每个玩家的分数显示框架
+            player_score_frame = tk.Frame(score_frame, bg=self.colors['bg'])
+            player_score_frame.pack(side='left', padx=(10, 0))
+            
+            # 玩家颜色名称标签（使用对应颜色）
+            color = self.color_values.get(player.color, self.colors['text'])
+            name_label = tk.Label(player_score_frame, textvariable=self.score_vars[player.color]['name'], 
+                                font=self.default_font, bg=self.colors['bg'], fg=color)
+            name_label.pack(side='left')
+            
+            # 分数标签（使用默认颜色）
+            score_label = tk.Label(player_score_frame, textvariable=self.score_vars[player.color]['score'], 
+                                 font=self.default_font, bg=self.colors['bg'], fg=self.colors['text'])
+            score_label.pack(side='left')
+            
+            # 存储标签引用
+            self.score_labels[player.color] = {
+                'name': name_label,
+                'score': score_label
+            }
+
         # 创建游戏区域
         game_frame = tk.Frame(main_frame, bg=self.colors['bg'])
         game_frame.pack(expand=True)
@@ -302,6 +344,9 @@ class BoardGUI(tk.Tk):
         # 更新回合显示
         self.turn_var.set("回合: 0")
         
+        # 更新分数显示
+        self.update_scores()
+        
         # 若游戏循环已停止，重新启动
         if self.engine.game_over:
             self.engine.game_over = False
@@ -346,6 +391,14 @@ class BoardGUI(tk.Tk):
         # 更新回合计数
         if hasattr(self.engine, 'turn_count'):
             self.turn_var.set(f"步数: {self.engine.turn_count}")
+            
+        # 更新分数显示
+        self.update_scores()
+
+    def update_scores(self):
+        """更新分数显示"""
+        for player in self.board.players:
+            self.score_vars[player.color]['score'].set(f": {player.score}分")
 
     def draw_tiles(self, event=None):
         """绘制棋盘格"""

@@ -34,8 +34,9 @@ class Pawn:
 
 
 class Board:
-    def __init__(self, boardsize, players):
+    def __init__(self, boardsize, mode, players : list[Player]):
         self.boardsize = boardsize
+        self.mode = mode
         self.players = players
         self.board = [[None for _ in range(boardsize)] for _ in range(boardsize)]
         self.initialize_board()
@@ -61,7 +62,7 @@ class Board:
     def clone(self):
         """创建棋盘的深度复制"""
         import copy
-        new_board = Board(self.boardsize, self.players)
+        new_board = Board(self.boardsize, self.mode, self.players)
         new_board.board = [[None for _ in range(self.boardsize)] for _ in range(self.boardsize)]
         
         # 复制棋子
@@ -78,6 +79,7 @@ class Board:
         return new_board
 
     def initialize_board(self):
+        """初始化棋盘"""
         self.turn = 1
         if len(self.players) == 2:
             self.players[0].set_index(0)
@@ -94,7 +96,6 @@ class Board:
                     if (i + j) < (size):
                         self.board[self.boardsize - i - 1][self.boardsize - j - 1] = Pawn(self, self.players[1], self.boardsize - i - 1, self.boardsize - j - 1)
 
-        # TODO: Implement for more players
         elif len(self.players) == 4:
             self.players[0].set_index(0)
             self.players[1].set_index(1)
@@ -108,19 +109,16 @@ class Board:
                 for j in range(size):
                     if (i + j) < size and i < 6 and j < 6:
                         self.board[i][j] = Pawn(self, self.players[0], i, j)
-            
             # 右上角玩家
             for i in range(size):
                 for j in range(size):
                     if (i + j) < size:
                         self.board[i][self.boardsize - j - 1] = Pawn(self, self.players[1], i, self.boardsize - j - 1)
-            
             # 左下角玩家
             for i in range(size):
                 for j in range(size):
                     if (i + j) < size:
                         self.board[self.boardsize - i - 1][j] = Pawn(self, self.players[2], self.boardsize - i - 1, j)
-            
             # 右下角玩家
             for i in range(size):
                 for j in range(size):
@@ -128,6 +126,7 @@ class Board:
                         self.board[self.boardsize - i - 1][self.boardsize - j - 1] = Pawn(self, self.players[3], self.boardsize - i - 1, self.boardsize - j - 1)
         
     def get_home_area(self, player): 
+        """获取玩家的家区域"""
         home = []
         size = min(6, self.boardsize // 2)
         if player.index == 0:  # 左上角
@@ -154,6 +153,7 @@ class Board:
         return home
     
     def get_goal_area(self, player):
+        """获取玩家的目标区域"""
         goal = []
         size = min(6, self.boardsize // 2)
         
@@ -167,12 +167,12 @@ class Board:
             for i in range(size):
                 for j in range(size):
                     if (i + j) < size:
-                        goal.append((self.boardsize - i - 1, j))  # 修复：左下角位置
+                        goal.append((self.boardsize - i - 1, j))
         elif player.index == 2:  # 左下角玩家的目标是右上角
             for i in range(size):
                 for j in range(size):
                     if (i + j) < size:
-                        goal.append((i, self.boardsize - j - 1))  # 修复：右上角位置
+                        goal.append((i, self.boardsize - j - 1))
         elif player.index == 3:  # 右下角玩家的目标是左上角
             for i in range(size):
                 for j in range(size):
@@ -182,6 +182,7 @@ class Board:
         return goal
 
     def get_actions(self, player : Player) -> list[tuple[int, int, int, int]]:
+        """获取当前玩家的所有合法动作"""
         actions = set()
         directions = list(DIRECTION_OFFSET.values())
         
@@ -250,28 +251,73 @@ class Board:
             self.turn += 1
         else:
             raise ValueError("Invalid move: No pawn at starting position.")
-    
-    def get_state(self):
-        # 检查每个玩家的棋子是否全部进入对方的家
-        for player_idx, player in enumerate(self.players):
-            # 获取对方的家
-            goal_area = self.get_goal_area(player)
-            
-            # 获取当前玩家的所有棋子位置
-            player_pawns = []
-            for i in range(self.boardsize):
-                for j in range(self.boardsize):
-                    if self.board[i][j] and self.board[i][j].player == player:
-                        player_pawns.append((i, j))
-            
-            # 检查是否所有棋子都在对方家中
-            all_in_goal_area = all((x, y) in goal_area for x, y in player_pawns)
-            
-            if all_in_goal_area and len(player_pawns) > 0:
-                return {
-                    "winner": player,
-                    "message": f"{player.color} 获胜!"
-                }
         
-        # 如果没有玩家赢，游戏继续
+    def get_max_score(self) -> int:
+        """获取当前游戏模式下的最大分数"""
+        max_score = 0
+        for player in self.players:
+            max_score = max(max_score, player.score)
+
+        return max_score
+    
+    def get_max_player(self) -> Player:
+        """获取当前游戏模式下分数最高的玩家"""
+        max_score = self.get_max_score()
+        for player in self.players:
+            if player.score == max_score:
+                return player
+            
         return None
+    
+    def get_state(self) -> Player:
+        """获取当前棋盘状态"""
+        if self.mode == 'score':
+            all_players_are_finished = True
+            if not self.players: # 如果没有玩家，游戏无法根据玩家状态结束
+                return None
+
+            for player_idx, player in enumerate(self.players):
+                goal_area = self.get_goal_area(player)
+
+                player_pawns = []
+                for i in range(self.boardsize):
+                    for j in range(self.boardsize):
+                        if self.board[i][j] and self.board[i][j].player == player:
+                            player_pawns.append((i, j))
+                
+                # 检查所有棋子是否都在目标区域
+                all_in_goal_area = all((x, y) in goal_area for x, y in player_pawns)
+
+                # 如果所有棋子都在目标区域，玩家获胜
+                if not all_in_goal_area and len(player_pawns) > 0:
+                    all_players_are_finished = False
+
+            # 如果所有玩家都完成了，游戏结束
+            if all_players_are_finished:
+                max_player = self.get_max_player()
+                return max_player
+            else:
+                return None
+
+        elif self.mode == 'classic':
+            # 检查每个玩家的棋子是否全部进入对方的家
+            for player_idx, player in enumerate(self.players):
+                # 获取玩家的目标区域
+                goal_area = self.get_goal_area(player)
+
+                # 获取玩家的所有棋子位置
+                player_pawns = []
+                for i in range(self.boardsize):
+                    for j in range(self.boardsize):
+                        if self.board[i][j] and self.board[i][j].player == player:
+                            player_pawns.append((i, j))
+
+                # 检查所有棋子是否都在目标区域
+                all_in_goal_area = all((x, y) in goal_area for x, y in player_pawns)
+                
+                # 如果所有棋子都在目标区域，玩家获胜
+                if all_in_goal_area and len(player_pawns) > 0:
+                    return player
+            
+            # 如果没有玩家赢，游戏继续
+            return None

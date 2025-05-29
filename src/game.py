@@ -10,16 +10,14 @@ def readCommand(argv):
     parser = argparse.ArgumentParser(description='CS181 Final Project: Halma AI')
     parser.add_argument('-s', '--boardsize', type=int, choices=[4, 8, 10, 12], default=8,
                         help='Board size: 4, 8, 10, or 12.')
+    parser.add_argument('-m', '--mode', type=str, choices=['classic', 'score'], default='classic',
+                        help='Game mode: classic or score.')
     parser.add_argument('-n', '--numplayers', type=int, choices=[2, 4], default=2,
                         help='Number of players: 2 or 4.')
     parser.add_argument('-p1', '--player1', type=str, choices=['H', 'M', 'MLS', 'G', 'R', "AQL", "MCTS", "NAQL"], default='H',
                         help='Player 1 type: H, M, MLS, G, R, AQL, MCTS, or NAQL.')
     parser.add_argument('-p2', '--player2', type=str, choices=['H', 'M', 'MLS', 'G', 'R', "AQL", "MCTS", "NAQL"], default='H',
                         help='Player 2 type: H, M, MLS, G, R, AQL, MCTS, or NAQL.')
-    parser.add_argument('-p3', '--player3', type=str, choices=['H'], default='H',
-                        help='Player 3 type: H.')
-    parser.add_argument('-p4', '--player4', type=str, choices=['H'], default='H',
-                        help='Player 4 type: H.')
     
     args = parser.parse_args(argv)
     return args
@@ -28,14 +26,11 @@ if __name__ == "__main__":
     args = readCommand(sys.argv[1:])
 
     boardsize = args.boardsize
+    mode = args.mode
     numplayers = args.numplayers
 
     player1 = args.player1.upper()
     player2 = args.player2.upper()
-
-    if numplayers == 4:
-        player3 = args.player3.upper()
-        player4 = args.player4.upper()
 
     if player1 == "H":
         player1 = HumanPlayer("RED")
@@ -74,18 +69,13 @@ if __name__ == "__main__":
         player2 = Neural_ApproximateQLearningPlayer("GREEN", if_train=False)
         player2.load_model("gote_agent_ep300.pth")
         print("Weight successfully loaded!")
-    
-    if numplayers == 4:
-        if player3 == "H":
-            player3 = HumanPlayer("BLUE")
-
-        if player4 == "H":
-            player4 = HumanPlayer("YELLOW")
 
     if numplayers == 2:
-        board = Board(boardsize, (player1, player2))
+        board = Board(boardsize, mode, (player1, player2))
     elif numplayers == 4:
-        board = Board(boardsize, (player1, player2, player3, player4))
+        player3 = HumanPlayer("BLUE")
+        player4 = HumanPlayer("YELLOW")
+        board = Board(boardsize, mode, (player1, player2, player3, player4))
 
     if not isinstance(player1, HumanPlayer) and not isinstance(player1, RandomPlayer):
         player1.set_board(board)

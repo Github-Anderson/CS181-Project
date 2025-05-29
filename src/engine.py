@@ -20,13 +20,21 @@ class Engine:
         self.gui.mainloop()
 
     def game_loop(self):
-        state = self.board.get_state()
-        if state:
-            winner = state["winner"]
-            message = state["message"]
+        winning_player_or_none = self.board.get_state() # get_state() 返回 Player 对象或 None
+
+        if winning_player_or_none:
             self.game_over = True
+            winner = winning_player_or_none  # winner 是一个 Player 对象
+
+            message = ""
+            if self.board.mode == 'score':
+                winner_color_name = self.gui.color_names.get(winner.color, winner.color)
+                message = f"所有玩家均已到达目标区域！分数最高者: **{winner_color_name}** ({winner.score}分)"
+            elif self.board.mode == 'classic':
+                winner_color_name = self.gui.color_names.get(winner.color, winner.color)
+                message = f"**{winner_color_name}** 玩家获胜!"
+
             self.gui.update_status(message)
-            print(message)
             return
         
         for player in self.players:
@@ -36,6 +44,12 @@ class Engine:
             
         # 获取当前玩家可用的动作
         actions = self.board.get_actions(self.current_player)
+        if not actions:
+            # 如果当前玩家没有可用动作，直接进入下一个玩家的回合
+            self.gui.update_status(f"**{self.current_player.color}** 玩家无可用动作，跳过回合")
+            self.next_turn()
+            self.gui.after(10, self.game_loop)
+            return
         
         # 如果是人类玩家，等待GUI输入
         if isinstance(self.current_player, HumanPlayer):

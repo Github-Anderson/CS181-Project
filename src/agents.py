@@ -15,6 +15,7 @@ from collections import deque
 class Player(ABC):
     def __init__(self, color):
         self.index = None
+        self.score = 0
         self.color = color
     
     @abstractmethod

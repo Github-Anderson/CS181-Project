@@ -96,25 +96,61 @@ class Board:
 
         # TODO: Implement for more players
         elif len(self.players) == 4:
-            pass
-    
+            self.players[0].set_index(0)
+            self.players[1].set_index(1)
+            self.players[2].set_index(2)
+            self.players[3].set_index(3)
+
+            size = min(6, self.boardsize // 2)
+
+            # 左上角玩家
+            for i in range(size):
+                for j in range(size):
+                    if (i + j) < size and i < 6 and j < 6:
+                        self.board[i][j] = Pawn(self, self.players[0], i, j)
+            
+            # 右上角玩家
+            for i in range(size):
+                for j in range(size):
+                    if (i + j) < size:
+                        self.board[i][self.boardsize - j - 1] = Pawn(self, self.players[1], i, self.boardsize - j - 1)
+            
+            # 左下角玩家
+            for i in range(size):
+                for j in range(size):
+                    if (i + j) < size:
+                        self.board[self.boardsize - i - 1][j] = Pawn(self, self.players[2], self.boardsize - i - 1, j)
+            
+            # 右下角玩家
+            for i in range(size):
+                for j in range(size):
+                    if (i + j) < size:
+                        self.board[self.boardsize - i - 1][self.boardsize - j - 1] = Pawn(self, self.players[3], self.boardsize - i - 1, self.boardsize - j - 1)
+        
     def get_home_area(self, player): 
         home = []
         size = min(6, self.boardsize // 2)
-        if player.index == 0:
+        if player.index == 0:  # 左上角
             for i in range(size):
                 for j in range(size):
                     if (i + j) < size:
                         home.append((i, j))
-        elif player.index == 1:
-            pass
-        elif player.index == 2:
-            pass
-        elif player.index == 3:
+        elif player.index == 1:  # 右上角
+            for i in range(size):
+                for j in range(size):
+                    if (i + j) < size:
+                        home.append((i, self.boardsize - j - 1))
+        elif player.index == 2:  # 左下角
+            for i in range(size):
+                for j in range(size):
+                    if (i + j) < size:
+                        home.append((self.boardsize - i - 1, j))
+        elif player.index == 3:  # 右下角
             for i in range(size):
                 for j in range(size):
                     if (i + j) < size:
                         home.append((self.boardsize - i - 1, self.boardsize - j - 1))
+
         return home
     
     def get_goal_area(self, player):
@@ -131,12 +167,12 @@ class Board:
             for i in range(size):
                 for j in range(size):
                     if (i + j) < size:
-                        goal.append((i, self.boardsize - j - 1))
+                        goal.append((self.boardsize - i - 1, j))  # 修复：左下角位置
         elif player.index == 2:  # 左下角玩家的目标是右上角
             for i in range(size):
                 for j in range(size):
                     if (i + j) < size:
-                        goal.append((self.boardsize - i - 1, j))
+                        goal.append((i, self.boardsize - j - 1))  # 修复：右上角位置
         elif player.index == 3:  # 右下角玩家的目标是左上角
             for i in range(size):
                 for j in range(size):

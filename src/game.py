@@ -12,14 +12,15 @@ def readCommand(argv):
                         help='Board size: 4, 8, 10, or 12.')
     parser.add_argument('-n', '--numplayers', type=int, choices=[2, 4], default=2,
                         help='Number of players: 2 or 4.')
-    parser.add_argument('-p1', '--player1', type=str, choices=['H', 'M', 'MLS', 'G', 'R', "AQL", "MCTS"], default='H',
-                        help='Player 1 type: H, M, MLS, G, R, AQL, or MCTS.')
-    parser.add_argument('-p2', '--player2', type=str, choices=['H', 'M', 'MLS', 'G', 'R', "AQL", "MCTS"], default='H',
-                        help='Player 2 type: H, M, MLS, G, R, AQL, or MCTS.')
-    parser.add_argument('-p3', '--player3', type=str, choices=['H', 'M', 'MLS', 'G', 'R', "AQL", "MCTS"], default='H',
-                        help='Player 3 type: H, M, MLS, G, R, AQL, or MCTS.')
-    parser.add_argument('-p4', '--player4', type=str, choices=['H', 'M', 'MLS', 'G', 'R', "AQL", "MCTS"], default='H',
-                        help='Player 4 type: H, M, MLS, G, R, AQL, or MCTS.')
+    parser.add_argument('-p1', '--player1', type=str, choices=['H', 'M', 'MLS', 'G', 'R', "AQL", "MCTS", "NAQL"], default='H',
+                        help='Player 1 type: H, M, MLS, G, R, AQL, MCTS, or NAQL.')
+    parser.add_argument('-p2', '--player2', type=str, choices=['H', 'M', 'MLS', 'G', 'R', "AQL", "MCTS", "NAQL"], default='H',
+                        help='Player 2 type: H, M, MLS, G, R, AQL, MCTS, or NAQL.')
+    parser.add_argument('-p3', '--player3', type=str, choices=['H'], default='H',
+                        help='Player 3 type: H.')
+    parser.add_argument('-p4', '--player4', type=str, choices=['H'], default='H',
+                        help='Player 4 type: H.')
+    
     args = parser.parse_args(argv)
     return args
 
@@ -50,6 +51,10 @@ if __name__ == "__main__":
         player1 = MCTSPlayer("RED")
     elif player1 == "AQL":
         player1 = ApproximateQLearningPlayer("RED")
+    elif player1 == "NAQL":
+        player1 = Neural_ApproximateQLearningPlayer("RED", if_train=False)
+        player1.load_model("sente_agent_ep300.pth")
+        print("Weight successfully loaded!")
 
     if player2 == "H":
         player2 = HumanPlayer("GREEN")
@@ -64,38 +69,18 @@ if __name__ == "__main__":
     elif player2 == "MCTS":
         player2 = MCTSPlayer("GREEN")
     elif player2 == "AQL":
-        player2 = ApproximateQLearningPlayer("RED")
+        player2 = ApproximateQLearningPlayer("GREEN")
+    elif player2 == "NAQL":
+        player2 = Neural_ApproximateQLearningPlayer("GREEN", if_train=False)
+        player2.load_model("gote_agent_ep300.pth")
+        print("Weight successfully loaded!")
     
     if numplayers == 4:
         if player3 == "H":
             player3 = HumanPlayer("BLUE")
-        elif player3 == "M":
-            player3 = MinimaxPlayer("BLUE")
-        elif player3 == "MLS":
-            player3 = MinimaxPlayer("BLUE", use_local_search=True)
-        elif player3 == "G":
-            player3 = GreedyPlayer("BLUE")
-        elif player3 == "R":
-            player3 = RandomPlayer("BLUE")
-        elif player3 == "MCTS":
-            player3 = MCTSPlayer("BLUE")
-        elif player3 == "AQL":
-            player3 = ApproximateQLearningPlayer("RED")
 
         if player4 == "H":
             player4 = HumanPlayer("YELLOW")
-        elif player4 == "M":
-            player4 = MinimaxPlayer("YELLOW")
-        elif player4 == "MLS":
-            player4 = MinimaxPlayer("YELLOW", use_local_search=True)
-        elif player4 == "G":
-            player4 = GreedyPlayer("YELLOW")
-        elif player4 == "R":
-            player4 = RandomPlayer("YELLOW")
-        elif player4 == "MCTS":
-            player4 = MCTSPlayer("YELLOW")
-        elif player4 == "AQL":
-            player4 = ApproximateQLearningPlayer("RED")
 
     if numplayers == 2:
         board = Board(boardsize, (player1, player2))

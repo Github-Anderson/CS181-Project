@@ -87,7 +87,7 @@ def get_reward(board, player):
     
     return goal_reward + distance_penalty
 
-def train(episodes=1000, save_interval=100):
+def train(episodes=50, save_interval=10):
     agent = Neural_ApproximateQLearningPlayer("RED")
     opponent = MinimaxPlayer("BLUE", depth=2)
     players = [agent, opponent]

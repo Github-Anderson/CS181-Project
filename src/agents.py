@@ -470,12 +470,12 @@ class MCTSPlayer(AgentPlayer):
                 direction_score * 0.4
             )
             
-            print(f"\nAction {action}:")
-            print(f"- Visits: {child.visits} ({visit_ratio:.2f})")
-            print(f"- Value: {child.value:.2f} (Win ratio: {win_ratio:.2f})")
-            print(f"- Direction score: {direction_score}")
-            print(f"- Evaluation score: {eval_score}")
-            print(f"- Final score: {score}")
+            # print(f"\nAction {action}:")
+            # print(f"- Visits: {child.visits} ({visit_ratio:.2f})")
+            # print(f"- Value: {child.value:.2f} (Win ratio: {win_ratio:.2f})")
+            # print(f"- Direction score: {direction_score}")
+            # print(f"- Evaluation score: {eval_score}")
+            # print(f"- Final score: {score}")
             
             if score > best_score:
                 best_score = score
@@ -894,42 +894,100 @@ class NeuralFeatureExtractor(nn.Module):
         return torch.tensor([action], dtype=torch.float32, device=device)
 
 class Neural_ApproximateQLearningPlayer(AgentPlayer):
-    def __init__(self, color, board_size=8, lr=0.001, gamma=0.99, epsilon=0.1):
+    def __init__(self, color, board_size=8, lr=0.001, gamma=0.99, epsilon=0.1, if_train=True):
         super().__init__(color)
         self.board_size = board_size
         self.gamma = gamma
         self.epsilon = epsilon
-        
-        # 初始化网络和优化器
+        self.if_train = if_train
+
+        # 初始化网络及目标网络
         self.network = NeuralFeatureExtractor(board_size)
         self.target_network = NeuralFeatureExtractor(board_size)
         self.target_network.load_state_dict(self.network.state_dict())
-        
+
         self.optimizer = optim.Adam(self.network.parameters(), lr=lr)
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.network.to(self.device)
         self.target_network.to(self.device)
-        
-        # 经验回放缓冲区
+
+        # 经验回放缓冲区与更新参数
         self.memory = deque(maxlen=10000)
         self.batch_size = 32
         self.target_update = 1000
         self.steps = 0
-        
+
         self.board = None
-        
+        self.last_action = None  # 用于记录上一次动作
+
     def set_board(self, board):
         self.board = board
-        
+
+    def _is_reverse_action(self, action):
+        """
+        判断当前action是否为上一次action的反向操作，
+        即：如果上一次移动的起始位置成为本次移动的终点位置，
+        且上一次移动的终点位置成为本次移动的起始位置，则认为此行动无效。
+        """
+        if self.last_action is None:
+            return False
+        last_start_x, last_start_y, last_end_x, last_end_y = self.last_action
+        curr_start_x, curr_start_y, curr_end_x, curr_end_y = action
+        return (last_end_x, last_end_y) == (curr_start_x, curr_start_y) and \
+               (last_start_x, last_start_y) == (curr_end_x, curr_end_y)
+
     def get_action(self, actions, training=True):
         if not actions:
             return None
-            
-        # 根据游戏阶段动态调整探索
+
+        # 过滤掉反向操作
+        filtered_actions = [a for a in actions if not self._is_reverse_action(a)]
+        if not filtered_actions:
+            filtered_actions = actions  # 如果全部被过滤，则恢复所有动作
+
+        # 统计己方中，未进入目标区域的棋子数
+        pieces_not_in_goal = 0
+        goal_area = set(self.board.get_goal_area(self))
+        for i in range(self.board.boardsize):
+            for j in range(self.board.boardsize):
+                piece = self.board.board[i][j]
+                if piece and piece.player == self and (i, j) not in goal_area:
+                    pieces_not_in_goal += 1
+
+        # 当只有四个棋子还未进入目标区域时，模拟Minimax逻辑
+        if pieces_not_in_goal <= 2:
+            best_value = float('-inf')
+            best_action = None
+
+            for action in filtered_actions:
+                # 模拟执行动作
+                start_x, start_y, end_x, end_y = action
+                piece = self.board.board[start_x][start_y]
+                temp_x, temp_y = piece.x, piece.y
+
+                self.board.board[end_x][end_y] = piece
+                self.board.board[start_x][start_y] = None
+                piece.x, piece.y = end_x, end_y
+
+                # 调用evaluation函数评估当前动作的价值
+                value = evaluation(self.board, self)
+
+                # 恢复棋盘状态
+                piece.x, piece.y = temp_x, temp_y
+                self.board.board[start_x][start_y] = piece
+                self.board.board[end_x][end_y] = None
+
+                if value > best_value:
+                    best_value = value
+                    best_action = action
+
+            if best_action is not None:
+                self.last_action = best_action
+                return best_action
+
+        # 根据进入目标区域的棋子数量动态调整探索率
         pieces_in_goal = sum(1 for i, j in self.board.get_goal_area(self)
-                            if self.board.board[i][j] and 
-                            self.board.board[i][j].player == self)
-        
+                              if self.board.board[i][j] and self.board.board[i][j].player == self)
         exploration_prob = self.epsilon
         if not training:
             exploration_prob = 0.05
@@ -937,66 +995,71 @@ class Neural_ApproximateQLearningPlayer(AgentPlayer):
             exploration_prob = 0.05
         elif pieces_in_goal >= 2:
             exploration_prob = 0.1
-            
+
+        if not self.if_train:
+            exploration_prob = 0
+
+        # epsilon-greedy选择动作
         if random.random() < exploration_prob:
-            valid_actions = [a for a in actions if not is_going_backwards(self.board.boardsize, a, self)]
-            return random.choice(valid_actions) if valid_actions else random.choice(actions)
-        
-        # 计算所有动作的Q值
-        state_tensor = self.network.encode_board(self.board, self)
-        max_q = float('-inf')
-        best_action = None
-        
-        self.network.eval()
-        with torch.no_grad():
-            for action in actions:
-                action_tensor = self.network.encode_action(action)
-                q_value = self.network(state_tensor, action_tensor).item()
-                
-                if q_value > max_q:
-                    max_q = q_value
-                    best_action = action
-        
-        self.network.train()
-        return best_action
-    
+            valid_actions = [a for a in filtered_actions if not is_going_backwards(self.board.boardsize, a, self)]
+            action = random.choice(valid_actions) if valid_actions else random.choice(filtered_actions)
+        else:
+            state_tensor = self.network.encode_board(self.board, self)
+            max_q = float('-inf')
+            action = None
+            self.network.eval()
+            with torch.no_grad():
+                for a in filtered_actions:
+                    action_tensor = self.network.encode_action(a)
+                    q_value = self.network(state_tensor, action_tensor).item()
+                    if q_value > max_q:
+                        max_q = q_value
+                        action = a
+            self.network.train()
+            if action is None:
+                action = random.choice(filtered_actions)
+
+        self.last_action = action
+        return action
+
     def store_transition(self, state, action, reward, next_state, done):
         self.memory.append((state, action, reward, next_state, done))
-        
+
     def update_network(self):
         if len(self.memory) < self.batch_size:
             return
-            
-        # 随机采样批次
+
         batch = random.sample(self.memory, self.batch_size)
         state_batch = []
         action_batch = []
         reward_batch = []
         next_state_batch = []
         done_batch = []
-        
+
         for state, action, reward, next_state, done in batch:
             state_batch.append(self.network.encode_board(state, self))
             action_batch.append(self.network.encode_action(action))
             reward_batch.append(reward)
             next_state_batch.append(self.network.encode_board(next_state, self))
             done_batch.append(done)
-            
+
         state_batch = torch.cat(state_batch)
         action_batch = torch.cat(action_batch)
         reward_batch = torch.tensor(reward_batch, device=self.device)
         next_state_batch = torch.cat(next_state_batch)
         done_batch = torch.tensor(done_batch, device=self.device)
-        
-        # 计算当前Q值
+
         current_q = self.network(state_batch, action_batch).squeeze()
-        
-        # 计算目标Q值
+
         with torch.no_grad():
             next_q = torch.zeros_like(reward_batch)
             for idx, next_state in enumerate(next_state_batch):
                 if not done_batch[idx]:
                     next_actions = self.board.get_actions(self)
+                    if self.last_action:
+                        next_actions = [a for a in next_actions if not self._is_reverse_action(a)]
+                        if not next_actions:
+                            next_actions = self.board.get_actions(self)
                     if next_actions:
                         max_next_q = float('-inf')
                         for action in next_actions:
@@ -1004,27 +1067,24 @@ class Neural_ApproximateQLearningPlayer(AgentPlayer):
                             q = self.target_network(next_state.unsqueeze(0), action_tensor).item()
                             max_next_q = max(max_next_q, q)
                         next_q[idx] = max_next_q
-                        
             target_q = reward_batch + self.gamma * next_q
-        
-        # 更新网络
+
         loss = nn.MSELoss()(current_q, target_q)
         self.optimizer.zero_grad()
         loss.backward()
         self.optimizer.step()
-        
-        # 更新目标网络
+
         self.steps += 1
         if self.steps % self.target_update == 0:
             self.target_network.load_state_dict(self.network.state_dict())
-            
+
     def save_model(self, path):
         torch.save({
             'network_state_dict': self.network.state_dict(),
             'optimizer_state_dict': self.optimizer.state_dict(),
             'steps': self.steps
         }, path)
-        
+
     def load_model(self, path):
         checkpoint = torch.load(path)
         self.network.load_state_dict(checkpoint['network_state_dict'])

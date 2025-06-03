@@ -62,23 +62,51 @@ class Board:
         self.initialize_board()
 
     def clone(self):
-        """创建棋盘的深度复制"""
-        import copy
-        new_board = Board(self.boardsize, self.mode, self.players)
-        new_board.board = [[None for _ in range(self.boardsize)] for _ in range(self.boardsize)]
-        new_board.players_finished_goal = list(self.players_finished_goal) # 复制完成列表
-        
-        # 复制棋子
-        for i in range(self.boardsize):
-            for j in range(self.boardsize):
-                if self.board[i][j]:
-                    pawn = self.board[i][j]
-                    new_pawn = Pawn(new_board, pawn.player, pawn.x, pawn.y)
-                    new_pawn.is_in_goal = pawn.is_in_goal
-                    new_pawn.has_left_home = pawn.has_left_home
-                    new_board.board[i][j] = new_pawn
-        
+        """创建棋盘的深度复制，确保玩家分数等状态独立"""
+        # 1. 创建一个新的 Board 实例，但不通过标准 __init__ 以避免不必要的重置
+        new_board = object.__new__(Board)
+
+        # 2. 复制棋盘的基本属性
+        new_board.boardsize = self.boardsize
+        new_board.mode = self.mode
         new_board.turn = self.turn
+        new_board.players_finished_goal = list(self.players_finished_goal) # 创建列表的浅副本
+
+        # 3. 创建玩家对象的独立副本，并保留其当前状态（包括分数）
+        cloned_players_list = []
+        # player_map 用于将原始玩家实例映射到其克隆副本，以便在复制棋子时使用
+        player_map = {} 
+
+        for original_player in self.players:
+            # 使用原始玩家的类和颜色创建新的玩家实例
+            cloned_player = original_player.__class__(original_player.color)
+            cloned_player.score = original_player.score  # 复制当前分数
+            cloned_player.index = original_player.index  # 复制索引
+            
+            # 如果玩家是 AgentPlayer 或其子类，需要设置其 board 属性为 new_board
+            if hasattr(cloned_player, 'set_board'):
+                cloned_player.set_board(new_board)
+            
+            cloned_players_list.append(cloned_player)
+            player_map[original_player] = cloned_player
+        
+        new_board.players = cloned_players_list
+
+        # 4. 初始化并复制棋盘上的棋子
+        new_board.board = [[None for _ in range(new_board.boardsize)] for _ in range(new_board.boardsize)]
+        for r in range(self.boardsize):
+            for c in range(self.boardsize):
+                original_pawn = self.board[r][c]
+                if original_pawn:
+                    # 获取此棋子对应的克隆玩家实例
+                    owner_cloned_player = player_map[original_pawn.player]
+                    
+                    # 为新棋盘创建一个新的 Pawn 实例
+                    new_pawn = Pawn(new_board, owner_cloned_player, original_pawn.x, original_pawn.y)
+                    new_pawn.is_in_goal = original_pawn.is_in_goal
+                    new_pawn.has_left_home = original_pawn.has_left_home
+                    new_board.board[r][c] = new_pawn
+                
         return new_board
 
     def initialize_board(self):
@@ -358,7 +386,7 @@ class Board:
         # 连跳得分：连跳n次得n分，但前提是棋子移动前不在目标区域且不在家区域
         is_in_home_area = (start_x, start_y) in home_area
         if jump_count > 0 and not was_in_goal and not is_in_home_area:
-            score += jump_count
+            score += jump_count * 0
 
         # 检查此动作是否导致玩家所有棋子都进入目标区域
         # 首先，统计玩家棋子总数，并检查在此动作之前是否所有棋子都已在目标区
@@ -410,6 +438,7 @@ class Board:
                         score += 100  # 第二个完成所有棋子进入目标区的玩家
 
         return score
+    
     def apply_action(self, action):
         start_x, start_y, end_x, end_y = action
         pawn = self.board[start_x][start_y]
@@ -477,24 +506,49 @@ class Board:
     
     def get_state(self) -> Player:
         """获取当前棋盘状态"""
-        for player_idx, player in enumerate(self.players):
-                # 获取玩家的目标区域
-            goal_area = self.get_goal_area(player)
+        if self.mode == "classic":
+            for player_idx, player in enumerate(self.players):
+                    # 获取玩家的目标区域
+                goal_area = self.get_goal_area(player)
 
-            # 获取玩家的所有棋子位置
-            player_pawns = []
-            for i in range(self.boardsize):
-                for j in range(self.boardsize):
-                    if self.board[i][j] and self.board[i][j].player == player:
-                        player_pawns.append((i, j))
+                # 获取玩家的所有棋子位置
+                player_pawns = []
+                for i in range(self.boardsize):
+                    for j in range(self.boardsize):
+                        if self.board[i][j] and self.board[i][j].player == player:
+                            player_pawns.append((i, j))
 
-            # 检查所有棋子是否都在目标区域
-            all_in_goal_area = all((x, y) in goal_area for x, y in player_pawns)
+                # 检查所有棋子是否都在目标区域
+                all_in_goal_area = all((x, y) in goal_area for x, y in player_pawns)
+                
+                # 如果所有棋子都在目标区域，玩家获胜
+                if all_in_goal_area and len(player_pawns) > 0:
+                    max_player = self.get_max_player()
+                    return max_player
             
-            # 如果所有棋子都在目标区域，玩家获胜
-            if all_in_goal_area and len(player_pawns) > 0:
-                max_player = self.get_max_player()
-                return max_player
-        
-        # 如果没有玩家赢，游戏继续
-        return None
+            # 如果没有玩家赢，游戏继续
+            return None
+    
+        elif self.mode == "score":
+            """计分模式：当所有玩家都将其所有棋子移动到目标区域时，游戏结束。"""
+            
+            for player in self.players:
+                # 获取玩家的目标区域
+                goal_area = self.get_goal_area(player)
+
+                # 获取玩家的所有棋子位置
+                player_pawns = []
+                for i in range(self.boardsize):
+                    for j in range(self.boardsize):
+                        if self.board[i][j] and self.board[i][j].player == player:
+                            player_pawns.append((i, j))
+
+                # 检查所有棋子是否都在目标区域
+                all_in_goal_area = all((x, y) in goal_area for x, y in player_pawns)
+                
+                # 如果所有棋子都在目标区域，玩家获胜
+                if not all_in_goal_area:
+                    return None
+            
+            max_player = self.get_max_player()
+            return max_player

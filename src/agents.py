@@ -61,44 +61,16 @@ def evaluation_pre(board, player):
 
 def evaluation(board, player, action=None):
     """
-    评估函数，可选择性地先应用action再评估
+    评估函数。
     """
-    board_to_evaluate = board
+    if action is None:
+        # 对于当前状态的评估，返回玩家当前的分数
+        return player.score + evaluation_pre(board, player)
 
-    if action:
-        temp_board = board.clone()  # 创建棋盘的深拷贝
-        start_x, start_y, end_x, end_y = action
-        pawn_to_move = temp_board.board[start_x][start_y]
-
-        if pawn_to_move is None:
-            return float("-inf")
-
-        # 在复制的棋盘上应用动作
-        temp_board.board[end_x][end_y] = pawn_to_move
-        temp_board.board[start_x][start_y] = None
-        pawn_to_move.move(end_x, end_y)  # 更新棋子内部状态 (x, y, is_in_goal, has_left_home)
-        
-        board_to_evaluate = temp_board # 后续评估使用复制的棋盘
-    
-    # 执行评估
-    val = 0
-    goal_area = board_to_evaluate.get_goal_area(player) # goal_area 是 (x,y) 坐标列表
-    
-    for i in range(board_to_evaluate.boardsize):
-        for j in range(board_to_evaluate.boardsize):
-            pawn_on_board = board_to_evaluate.board[i][j]
-            if pawn_on_board and pawn_on_board.player == player:
-                current_dist = 0
-                if goal_area: # 确保目标区域存在
-                    # 计算到最近目标点的曼哈顿距离
-                    current_dist = min(abs(i - gx) + abs(j - gy) for gx, gy in goal_area)
-                val += current_dist # 累加距离 (值越大越差)
-                
-                if goal_area and (i,j) in goal_area: # 如果棋子在目标区域
-                    val -= 1000 # 给予大的奖励 (减少总“距离”)
-    
-    val *= -1
-    return val
+    # 对于给定的动作，评估执行该动作能获得的分数
+    # board.get_action_score(action) 本身计算的就是分数增量
+    score_change = board.get_action_score(action)
+    return score_change + evaluation_pre(board, player)
 
 class RandomPlayer(AgentPlayer):
     def get_action(self, actions):
@@ -109,27 +81,51 @@ class GreedyPlayer(AgentPlayer):
         super().__init__(color)
     
     def get_action(self, actions):
-        if not actions:
-            return None
         
-        best_action = None
-        best_actions = []
-        best_value = float("-inf")
-        
-        for action in actions:
-            value = evaluation(self.board, self, action)
+        if self.board.mode == "classic":
+            if not actions:
+                return None
             
-            if value > best_value:
-                best_value = value
-                best_action = action
+            best_action = None
+            best_actions = []
+            best_value = float("-inf")
+            
+            for action in actions:
+                value = evaluation_pre(self.board, self)
+                
+                if value > best_value:
+                    best_value = value
+                    best_action = action
 
-        for action in actions:
-            value = evaluation(self.board, self, action)
-            if value == best_value:
-                best_actions.append(action)
+            for action in actions:
+                value = evaluation_pre(self.board, self)
+                if value == best_value:
+                    best_actions.append(action)
 
-        return random.choice(best_actions) if best_actions else best_action
+            return random.choice(best_actions) if best_actions else best_action
 
+        elif self.board.mode == "score":
+            if not actions:
+                return None
+
+            best_action = None
+            best_actions = []
+            best_value = float("-inf")
+
+            for action in actions:
+                # 将 action 传递给 evaluation 函数
+                value = evaluation(self.board, self, action)
+
+                if value > best_value:
+                    best_value = value
+                    best_action = action
+            
+            for action_check in actions:
+                current_value = evaluation(self.board, self, action_check)
+                if current_value == best_value:
+                    best_actions.append(action_check)
+
+            return random.choice(best_actions) if best_actions else best_action
 
 class MinimaxPlayer(AgentPlayer):
     def __init__(self, color, depth=2):

@@ -14,10 +14,10 @@ def readCommand(argv):
                         help='Game mode: classic or score.')
     parser.add_argument('-n', '--numplayers', type=int, choices=[2, 4], default=2,
                         help='Number of players: 2 or 4.')
-    parser.add_argument('-p1', '--player1', type=str, choices=['H', 'M', 'MLS', 'G', 'R', "AQL", "MCTS", "NAQL"], default='H',
-                        help='Player 1 type: H, M, MLS, G, R, AQL, MCTS, or NAQL.')
-    parser.add_argument('-p2', '--player2', type=str, choices=['H', 'M', 'MLS', 'G', 'R', "AQL", "MCTS", "NAQL"], default='H',
-                        help='Player 2 type: H, M, MLS, G, R, AQL, MCTS, or NAQL.')
+    parser.add_argument('-p1', '--player1', type=str, choices=['H', 'M', 'G', 'R', "AQL", "MCTS", "NAQL"], default='H',
+                        help='Player 1 type: H, M, G, R, AQL, MCTS, or NAQL.')
+    parser.add_argument('-p2', '--player2', type=str, choices=['H', 'M', 'G', 'R', "AQL", "MCTS", "NAQL"], default='H',
+                        help='Player 2 type: H, M, G, R, AQL, MCTS, or NAQL.')
     
     args = parser.parse_args(argv)
     return args
@@ -36,8 +36,6 @@ if __name__ == "__main__":
         player1 = HumanPlayer("RED")
     elif player1 == "M":
         player1 = MinimaxPlayer("RED")
-    elif player1 == "MLS":
-        player1 = MinimaxPlayer("RED", use_local_search=True)
     elif player1 == "G":
         player1 = GreedyPlayer("RED")
     elif player1 == "R":
@@ -55,8 +53,6 @@ if __name__ == "__main__":
         player2 = HumanPlayer("GREEN")
     elif player2 == "M":
         player2 = MinimaxPlayer("GREEN")
-    elif player2 == "MLS":
-        player2 = MinimaxPlayer("GREEN", use_local_search=True)
     elif player2 == "G":
         player2 = GreedyPlayer("GREEN")
     elif player2 == "R":

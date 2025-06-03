@@ -39,6 +39,7 @@ class Board:
         self.mode = mode
         self.players = players
         self.board = [[None for _ in range(boardsize)] for _ in range(boardsize)]
+        self.players_finished_goal = [] # 新增：记录完成目标区的玩家顺序
         self.initialize_board()
 
     def __str__(self):
@@ -57,6 +58,7 @@ class Board:
         """重置棋盘到初始状态"""
         # 清空棋盘
         self.board = [[None for _ in range(self.boardsize)] for _ in range(self.boardsize)]
+        self.players_finished_goal = [] # 重置完成列表
         self.initialize_board()
 
     def clone(self):
@@ -64,6 +66,7 @@ class Board:
         import copy
         new_board = Board(self.boardsize, self.mode, self.players)
         new_board.board = [[None for _ in range(self.boardsize)] for _ in range(self.boardsize)]
+        new_board.players_finished_goal = list(self.players_finished_goal) # 复制完成列表
         
         # 复制棋子
         for i in range(self.boardsize):
@@ -128,6 +131,10 @@ class Board:
                     if (i + j) < size:
                         self.board[self.boardsize - i - 1][self.boardsize - j - 1] = Pawn(self, self.players[3], self.boardsize - i - 1, self.boardsize - j - 1)
         
+    def get_mode(self):
+        """获取当前游戏模式"""
+        return self.mode
+    
     def get_home_area(self, player): 
         """获取玩家的家区域"""
         home = []
@@ -307,31 +314,136 @@ class Board:
         # 返回过滤后的动作（按动作排序以保证确定性）
         return sorted(filtered_actions, key=lambda x: x[0])
     
+    def get_jump(self, action) -> int:
+        """获取当前动作的连跳次数"""
+        start_x, start_y, end_x, end_y = action
+        pawn = self.board[start_x][start_y]
+        if pawn is None:
+            return 0
+        
+        # 获取所有合法动作
+        actions_with_jumps = self.get_actions_with_jump(pawn.player)
+        
+        # 查找当前动作对应的连跳次数
+        for action_tuple in actions_with_jumps:
+            stored_action, jump_count = action_tuple
+            if stored_action == action:
+                return jump_count
+        
+        return 0
+    
+    def get_action_score(self, action):
+        """获取当前动作的得分"""
+        start_x, start_y, end_x, end_y = action
+        pawn = self.board[start_x][start_y]
+        if pawn is None:
+            return 0
+        
+        player_obj = pawn.player
+        goal_area = set(self.get_goal_area(player_obj))
+        home_area = set(self.get_home_area(player_obj))  # 获取家区域
+        
+        # 检查棋子移动前是否已经在目标区域
+        was_in_goal = hasattr(pawn, 'is_in_goal') and pawn.is_in_goal
+
+        # 检查连跳次数
+        jump_count = self._get_jump_count(action, player_obj)
+
+        score = 0
+        # 棋子首次进入目标区域
+        is_now_in_goal = (end_x, end_y) in goal_area
+        if is_now_in_goal and not was_in_goal:
+            score += 10
+
+        # 连跳得分：连跳n次得n分，但前提是棋子移动前不在目标区域且不在家区域
+        is_in_home_area = (start_x, start_y) in home_area
+        if jump_count > 0 and not was_in_goal and not is_in_home_area:
+            score += jump_count
+
+        # 检查此动作是否导致玩家所有棋子都进入目标区域
+        # 首先，统计玩家棋子总数，并检查在此动作之前是否所有棋子都已在目标区
+        all_pawns_in_goal_before_this_action_flag = True
+        num_player_pawns_on_board = 0
+        for r_before in range(self.boardsize):
+            for c_before in range(self.boardsize):
+                p_before = self.board[r_before][c_before]
+                if p_before and p_before.player == player_obj:
+                    num_player_pawns_on_board += 1
+                    if (r_before, c_before) not in goal_area:
+                        all_pawns_in_goal_before_this_action_flag = False
+        
+        # 然后，检查此动作之后是否所有棋子都在目标区
+        if not all_pawns_in_goal_before_this_action_flag and num_player_pawns_on_board > 0:
+            all_pawns_in_goal_after_this_action_flag = True
+            current_pawns_in_goal_after_action_count = 0
+            for r_after in range(self.boardsize):
+                for c_after in range(self.boardsize):
+                    p_after_obj = self.board[r_after][c_after] # Original pawn object on board
+                    
+                    # Determine the state of this cell *after* the action
+                    current_cell_pawn = None
+                    current_cell_pos_is_goal = False
+
+                    if r_after == end_x and c_after == end_y: # This is the destination of the moved pawn
+                        current_cell_pawn = pawn 
+                        current_cell_pos_is_goal = (end_x, end_y) in goal_area
+                    elif r_after == start_x and c_after == start_y: # This is the start, will be empty
+                        current_cell_pawn = None
+                    else: # Other cells
+                        current_cell_pawn = p_after_obj
+                        current_cell_pos_is_goal = (r_after, c_after) in goal_area
+                    
+                    if current_cell_pawn and current_cell_pawn.player == player_obj:
+                        if current_cell_pos_is_goal:
+                            current_pawns_in_goal_after_action_count += 1
+                        else:
+                            all_pawns_in_goal_after_this_action_flag = False
+                            break
+                if not all_pawns_in_goal_after_this_action_flag: # break outer loop
+                    pass # Handled by the break from inner loop
+
+            if all_pawns_in_goal_after_this_action_flag and current_pawns_in_goal_after_action_count == num_player_pawns_on_board:
+                if player_obj.color not in self.players_finished_goal:
+                    if len(self.players_finished_goal) == 0:
+                        score += 200  # 第一个完成所有棋子进入目标区的玩家
+                    elif len(self.players_finished_goal) == 1:
+                        score += 100  # 第二个完成所有棋子进入目标区的玩家
+
+        return score
     def apply_action(self, action):
         start_x, start_y, end_x, end_y = action
         pawn = self.board[start_x][start_y]
         if pawn is not None:
-            # 检查棋子移动前是否已经在目标区域
-            goal_area = set(self.get_goal_area(pawn.player))
-            was_in_goal = hasattr(pawn, 'is_in_goal') and pawn.is_in_goal
-            
-            # 检查连跳次数
-            jump_count = self._get_jump_count(action, pawn.player)
+            player_obj = pawn.player # 保存玩家对象
+            # 获取此动作将产生的得分
+            score_for_this_action = self.get_action_score(action)
             
             # 移动棋子
             self.board[end_x][end_y] = pawn
             self.board[start_x][start_y] = None
-            pawn.move(end_x, end_y)
+            pawn.move(end_x, end_y) # pawn.move 会更新 pawn.is_in_goal
             
-            # 检查棋子移动后是否进入目标区域（首次进入）
-            is_now_in_goal = (end_x, end_y) in goal_area
-            if is_now_in_goal and not was_in_goal:
-                # 棋子首次进入目标区域，玩家得5分
-                pawn.player.score += 5
-            
-            # 连跳得分：连跳n次得n分
-            if jump_count > 0:
-                pawn.player.score += jump_count
+            # 更新玩家分数
+            player_obj.score += score_for_this_action
+
+            # 检查玩家是否因为此动作完成了所有棋子到目标区，并且尚未记录
+            if player_obj.color not in self.players_finished_goal:
+                all_pawns_now_in_goal = True
+                num_player_pawns_on_board_now = 0
+                player_goal_area = set(self.get_goal_area(player_obj))
+                for r in range(self.boardsize):
+                    for c in range(self.boardsize):
+                        p_check = self.board[r][c]
+                        if p_check and p_check.player == player_obj:
+                            num_player_pawns_on_board_now +=1
+                            if (r, c) not in player_goal_area:
+                                all_pawns_now_in_goal = False
+                                break
+                    if not all_pawns_now_in_goal:
+                        break
+                
+                if all_pawns_now_in_goal and num_player_pawns_on_board_now > 0:
+                    self.players_finished_goal.append(player_obj.color)
             
             self.turn += 1
         else:
@@ -365,53 +477,24 @@ class Board:
     
     def get_state(self) -> Player:
         """获取当前棋盘状态"""
-        if self.mode == 'score':
-            all_players_are_finished = True
-            if not self.players: # 如果没有玩家，游戏无法根据玩家状态结束
-                return None
+        for player_idx, player in enumerate(self.players):
+                # 获取玩家的目标区域
+            goal_area = self.get_goal_area(player)
 
-            for player_idx, player in enumerate(self.players):
-                goal_area = self.get_goal_area(player)
+            # 获取玩家的所有棋子位置
+            player_pawns = []
+            for i in range(self.boardsize):
+                for j in range(self.boardsize):
+                    if self.board[i][j] and self.board[i][j].player == player:
+                        player_pawns.append((i, j))
 
-                player_pawns = []
-                for i in range(self.boardsize):
-                    for j in range(self.boardsize):
-                        if self.board[i][j] and self.board[i][j].player == player:
-                            player_pawns.append((i, j))
-                
-                # 检查所有棋子是否都在目标区域
-                all_in_goal_area = all((x, y) in goal_area for x, y in player_pawns)
-
-                # 如果所有棋子都在目标区域，玩家获胜
-                if not all_in_goal_area and len(player_pawns) > 0:
-                    all_players_are_finished = False
-
-            # 如果所有玩家都完成了，游戏结束
-            if all_players_are_finished:
+            # 检查所有棋子是否都在目标区域
+            all_in_goal_area = all((x, y) in goal_area for x, y in player_pawns)
+            
+            # 如果所有棋子都在目标区域，玩家获胜
+            if all_in_goal_area and len(player_pawns) > 0:
                 max_player = self.get_max_player()
                 return max_player
-            else:
-                return None
-
-        elif self.mode == 'classic':
-            # 检查每个玩家的棋子是否全部进入对方的家
-            for player_idx, player in enumerate(self.players):
-                # 获取玩家的目标区域
-                goal_area = self.get_goal_area(player)
-
-                # 获取玩家的所有棋子位置
-                player_pawns = []
-                for i in range(self.boardsize):
-                    for j in range(self.boardsize):
-                        if self.board[i][j] and self.board[i][j].player == player:
-                            player_pawns.append((i, j))
-
-                # 检查所有棋子是否都在目标区域
-                all_in_goal_area = all((x, y) in goal_area for x, y in player_pawns)
-                
-                # 如果所有棋子都在目标区域，玩家获胜
-                if all_in_goal_area and len(player_pawns) > 0:
-                    return player
-            
-            # 如果没有玩家赢，游戏继续
-            return None
+        
+        # 如果没有玩家赢，游戏继续
+        return None

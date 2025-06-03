@@ -50,13 +50,13 @@ def self_play_episode(agent, opponent, board):
         
         step += 1
         
-    return total_reward, step, state['winner'] if state else None
+    return total_reward, step, state if state else None
 
 def get_reward(board, player):
     """计算奖励"""
     state = board.get_state()
     if state:
-        if state['winner'] == player:
+        if state == player:
             return 1000
         else:
             return -1000

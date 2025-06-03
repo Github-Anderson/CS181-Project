@@ -13,6 +13,7 @@ class Engine:
         self.waiting_for_human = False
         self.human_action = None
         self.turn_count = 0
+        self.stop_game = False  # 添加游戏停止标志
 
     def start(self):
         self.gui = BoardGUI(self.board, self)
@@ -20,6 +21,10 @@ class Engine:
         self.gui.mainloop()
 
     def game_loop(self):
+        # 检查游戏停止标志
+        if self.stop_game:
+            return
+            
         winning_player_or_none = self.board.get_state() # get_state() 返回 Player 对象或 None
 
         if winning_player_or_none:
@@ -29,7 +34,7 @@ class Engine:
             message = ""
             if self.board.mode == 'score':
                 winner_color_name = self.gui.color_names.get(winner.color, winner.color)
-                message = f"所有玩家均已到达目标区域！分数最高者: **{winner_color_name}** ({winner.score}分)"
+                message = f"分数最高者: **{winner_color_name}** ({winner.score}分)"
             elif self.board.mode == 'classic':
                 winner_color_name = self.gui.color_names.get(winner.color, winner.color)
                 message = f"**{winner_color_name}** 玩家获胜!"
@@ -71,7 +76,7 @@ class Engine:
             self.gui.update()  # 刷新界面显示
             
             # 添加短暂延迟，让玩家能看到AI行动
-            #time.sleep(0.5)
+            # time.sleep(0.5)
             
             action = self.current_player.get_action(actions)
             self.turn_count += 1
@@ -84,8 +89,9 @@ class Engine:
         # 更新分数显示
         self.gui.update_scores()
         
-        # 继续游戏循环
-        self.gui.after(10, self.game_loop)
+        # 继续游戏循环（检查停止标志）
+        if not self.stop_game:
+            self.gui.after(10, self.game_loop)
 
     def next_turn(self):
         """进入下一个玩家的回合"""
@@ -98,6 +104,36 @@ class Engine:
         # 切换到列表中的下一个玩家
         next_pos = (current_pos + 1) % len(self.players)
         self.current_player_index = self.players[next_pos].index
+    
+    def stop_current_game(self):
+        """停止当前游戏"""
+        self.stop_game = True
+        self.game_over = True
+        
+    def restart_game(self):
+        """重新开始游戏"""
+        # 停止当前游戏
+        self.stop_current_game()
+        
+        # 重置引擎状态
+        self.stop_game = False
+        self.game_over = False
+        self.current_player_index = 0
+        self.current_player = self.players[0]
+        self.waiting_for_human = False
+        self.human_action = None
+        self.turn_count = 0
+        
+        # 重置棋盘
+        self.board.reset()
+        
+        # 重新设置AI玩家的棋盘引用
+        for player in self.players:
+            if hasattr(player, 'set_board'):
+                player.set_board(self.board)
+        
+        # 重新开始游戏循环
+        self.gui.after(100, self.game_loop)  # 稍微延迟确保停止完成
     
     def human_move(self, action):
         """接收来自GUI的人类玩家动作"""
@@ -321,17 +357,7 @@ class BoardGUI(tk.Tk):
 
     def new_game(self):
         """重新开始游戏"""
-        self.update_status("开始新游戏...")
-        # 重置棋盘
-        self.board.board = [[None for _ in range(self.board_size)] for _ in range(self.board_size)]
-        self.board.initialize_board()
-        
-        # 重置引擎状态
-        self.engine.current_player_index = 0
-        self.engine.current_player = self.engine.players[0]
-        self.engine.waiting_for_human = False
-        self.engine.human_action = None
-        self.engine.turn_count = 0
+        self.engine.restart_game()
         
         # 重置选择状态
         self.selected_pawn = None
@@ -342,16 +368,14 @@ class BoardGUI(tk.Tk):
         self.draw_pawns()
         
         # 更新回合显示
-        self.turn_var.set("回合: 0")
+        self.turn_var.set("步数: 0")
         
         # 更新分数显示
         self.update_scores()
         
-        # 若游戏循环已停止，重新启动
-        if self.engine.game_over:
-            self.engine.game_over = False
-            self.after(10, self.engine.game_loop)
-    
+        # 更新状态
+        self.update_status("新游戏开始！")
+
     def update_status(self, message):
         """更新状态栏显示，支持加粗格式和颜色"""
         # 检查是否包含加粗标记

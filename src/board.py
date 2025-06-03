@@ -69,8 +69,9 @@ class Board:
         # 2. 复制棋盘的基本属性
         new_board.boardsize = self.boardsize
         new_board.mode = self.mode
-        new_board.turn = self.turn
-        new_board.players_finished_goal = list(self.players_finished_goal) # 创建列表的浅副本
+        new_board.turn = self.turn  # 复制当前回合数
+        # 复制已完成目标区的玩家列表（列表本身是新的，颜色字符串是不可变的）
+        new_board.players_finished_goal = list(self.players_finished_goal) 
 
         # 3. 创建玩家对象的独立副本，并保留其当前状态（包括分数）
         cloned_players_list = []
@@ -79,20 +80,23 @@ class Board:
 
         for original_player in self.players:
             # 使用原始玩家的类和颜色创建新的玩家实例
+            # 这会调用如 MinimaxPlayer("RED") 这样的构造函数
             cloned_player = original_player.__class__(original_player.color)
             cloned_player.score = original_player.score  # 复制当前分数
             cloned_player.index = original_player.index  # 复制索引
             
-            # 如果玩家是 AgentPlayer 或其子类，需要设置其 board 属性为 new_board
+            # 如果玩家是 AgentPlayer 或其子类 (拥有 board 属性和 set_board 方法)
+            # 需要设置其 board 属性为 new_board
             if hasattr(cloned_player, 'set_board'):
                 cloned_player.set_board(new_board)
             
             cloned_players_list.append(cloned_player)
-            player_map[original_player] = cloned_player
+            player_map[original_player] = cloned_player # 存储原始玩家到克隆玩家的映射
         
-        new_board.players = cloned_players_list
+        new_board.players = cloned_players_list # 将克隆的玩家列表赋给新棋盘
 
         # 4. 初始化并复制棋盘上的棋子
+        # 创建一个新的二维列表来存储棋盘上的棋子
         new_board.board = [[None for _ in range(new_board.boardsize)] for _ in range(new_board.boardsize)]
         for r in range(self.boardsize):
             for c in range(self.boardsize):
@@ -102,10 +106,13 @@ class Board:
                     owner_cloned_player = player_map[original_pawn.player]
                     
                     # 为新棋盘创建一个新的 Pawn 实例
+                    # 新棋子将引用 new_board 和 owner_cloned_player
                     new_pawn = Pawn(new_board, owner_cloned_player, original_pawn.x, original_pawn.y)
+                    # 复制棋子的特定状态
                     new_pawn.is_in_goal = original_pawn.is_in_goal
                     new_pawn.has_left_home = original_pawn.has_left_home
-                    new_board.board[r][c] = new_pawn
+                    
+                    new_board.board[r][c] = new_pawn # 将新棋子放置在新棋盘上
                 
         return new_board
 
@@ -365,7 +372,7 @@ class Board:
         start_x, start_y, end_x, end_y = action
         pawn = self.board[start_x][start_y]
         if pawn is None:
-            return 0
+            raise ValueError("Invalid move: No pawn at starting position.")
         
         player_obj = pawn.player
         goal_area = set(self.get_goal_area(player_obj))
@@ -386,7 +393,7 @@ class Board:
         # 连跳得分：连跳n次得n分，但前提是棋子移动前不在目标区域且不在家区域
         is_in_home_area = (start_x, start_y) in home_area
         if jump_count > 0 and not was_in_goal and not is_in_home_area:
-            score += jump_count * 0
+            score += jump_count * 10
 
         # 检查此动作是否导致玩家所有棋子都进入目标区域
         # 首先，统计玩家棋子总数，并检查在此动作之前是否所有棋子都已在目标区

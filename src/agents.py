@@ -37,14 +37,14 @@ class AgentPlayer(Player):
     def set_board(self, board):
         self.board = board
 
-def evaluation_pre(board, player):
+def evaluation_classic(board, player):
     val = 0
     goal_area = board.get_goal_area(player)
     
     for i in range(board.boardsize):
         for j in range(board.boardsize):
             pawn = board.board[i][j]
-            if pawn and pawn.player == player:
+            if pawn and pawn.player.color == player.color:
                 goal_distances = []
                 for goal_x, goal_y in goal_area:
                     if board.board[goal_x][goal_y] is None or board.board[goal_x][goal_y].player != player:
@@ -52,25 +52,25 @@ def evaluation_pre(board, player):
                         goal_distances.append(distance)
                 
                 if goal_distances:
-                    val += max(goal_distances)
+                    val += min(goal_distances)
                 else:
                     val -= 20
     
     val *= -1
     return val
 
-def evaluation(board, player, action=None):
-    """
-    评估函数。
-    """
+def evaluation_score(board, player, action=None):
     if action is None:
-        # 对于当前状态的评估，返回玩家当前的分数
-        return player.score + evaluation_pre(board, player)
+        return evaluation_classic(board, player)
+    
+    board_copy = board.clone()
+    board_copy.apply_action(action)
 
-    # 对于给定的动作，评估执行该动作能获得的分数
-    # board.get_action_score(action) 本身计算的就是分数增量
-    score_change = board.get_action_score(action)
-    return score_change + evaluation_pre(board, player)
+    if board.mode == "classic":
+        return evaluation_classic(board_copy, player)
+
+    if board.mode == "score":
+        return evaluation_classic(board_copy, player) + board.get_action_score(action)
 
 class RandomPlayer(AgentPlayer):
     def get_action(self, actions):
@@ -81,57 +81,31 @@ class GreedyPlayer(AgentPlayer):
         super().__init__(color)
     
     def get_action(self, actions):
+        if not actions:
+            return None
+            
+        best_actions = []
+        best_value = float("-inf")
         
-        if self.board.mode == "classic":
-            if not actions:
-                return None
-            
-            best_action = None
-            best_actions = []
-            best_value = float("-inf")
-            
-            for action in actions:
-                value = evaluation_pre(self.board, self)
+        for action in actions:
+            value = evaluation_score(self.board, self, action)
+
+            if value > best_value:
+                best_value = value
+        
+        for action in actions:
+            value = evaluation_score(self.board, self, action)
+            if value == best_value:
+                best_actions.append(action)
                 
-                if value > best_value:
-                    best_value = value
-                    best_action = action
-
-            for action in actions:
-                value = evaluation_pre(self.board, self)
-                if value == best_value:
-                    best_actions.append(action)
-
-            return random.choice(best_actions) if best_actions else best_action
-
-        elif self.board.mode == "score":
-            if not actions:
-                return None
-
-            best_action = None
-            best_actions = []
-            best_value = float("-inf")
-
-            for action in actions:
-                # 将 action 传递给 evaluation 函数
-                value = evaluation(self.board, self, action)
-
-                if value > best_value:
-                    best_value = value
-                    best_action = action
-            
-            for action_check in actions:
-                current_value = evaluation(self.board, self, action_check)
-                if current_value == best_value:
-                    best_actions.append(action_check)
-
-            return random.choice(best_actions) if best_actions else best_action
+        return random.choice(best_actions) if best_actions else None
 
 class MinimaxPlayer(AgentPlayer):
-    def __init__(self, color, depth=2):
+    def __init__(self, color, depth=3, use_local_search=False):
         super().__init__(color)
         self.depth = depth
         self.time_limit = 3.0
+        self.use_local_search = use_local_search
     
     def get_action(self, actions):
         if not actions:
@@ -142,7 +116,12 @@ class MinimaxPlayer(AgentPlayer):
         opponent_idx = (self.index + len(self.board.players) // 2) % len(self.board.players)
         opponent = self.board.players[opponent_idx]
         
+        # 如果启用局部搜索，先对动作进行排序优化
+        if self.use_local_search:
+            actions = self.sort_actions_by_heuristic(actions)
+        
         best_value, best_action = self.minimax(
+            self.board,
             self.depth,
             self,
             opponent,
@@ -152,35 +131,33 @@ class MinimaxPlayer(AgentPlayer):
             True
         )
         
+        # 如果启用局部搜索且时间充裕，进行局部优化
+        if self.use_local_search and best_action and time.time() < time_limit - 1.0:
+            optimized_action = self.local_search_optimization(best_action, actions, time_limit)
+            if optimized_action:
+                best_action = optimized_action
+        
         return best_action
 
-    def minimax(self, depth, max_player, min_player, time_limit, alpha, beta, is_max):
+    def minimax(self, board, depth, max_player, min_player, time_limit, alpha, beta, is_max):
         if depth == 0 or time.time() > time_limit:
-            return evaluation_pre(self.board, max_player), None
+            return evaluation_score(board, max_player), None
         
         current_player = max_player if is_max else min_player
-        actions = self.board.get_actions(current_player)
+        actions = board.get_actions(current_player)
         
         if not actions:
-            return evaluation_pre(self.board, max_player), None
+            return evaluation_score(board, max_player), None
             
         best_action = None
         if is_max:
             best_value = float("-inf")
             for action in actions:
-                start_x, start_y, end_x, end_y = action
-                pawn = self.board.board[start_x][start_y]
-                temp_x, temp_y = pawn.x, pawn.y
+                # 使用board的深拷贝来递归评估
+                board_copy = board.clone()
+                board_copy.apply_action(action)
                 
-                self.board.board[end_x][end_y] = pawn
-                self.board.board[start_x][start_y] = None
-                pawn.x, pawn.y = end_x, end_y
-                
-                value, _ = self.minimax(depth-1, max_player, min_player, time_limit, alpha, beta, False)
-                
-                pawn.x, pawn.y = temp_x, temp_y
-                self.board.board[start_x][start_y] = pawn
-                self.board.board[end_x][end_y] = None
+                value, _ = self.minimax(board_copy, depth-1, max_player, min_player, time_limit, alpha, beta, False)
                 
                 if value > best_value:
                     best_value = value
@@ -192,19 +169,11 @@ class MinimaxPlayer(AgentPlayer):
         else:
             best_value = float("inf")
             for action in actions:
-                start_x, start_y, end_x, end_y = action
-                pawn = self.board.board[start_x][start_y]
-                temp_x, temp_y = pawn.x, pawn.y
+                # 使用board的深拷贝来递归评估
+                board_copy = board.clone()
+                board_copy.apply_action(action)
                 
-                self.board.board[end_x][end_y] = pawn
-                self.board.board[start_x][start_y] = None
-                pawn.x, pawn.y = end_x, end_y
-                
-                value, _ = self.minimax(depth-1, max_player, min_player, time_limit, alpha, beta, True)
-                
-                pawn.x, pawn.y = temp_x, temp_y
-                self.board.board[start_x][start_y] = pawn
-                self.board.board[end_x][end_y] = None
+                value, _ = self.minimax(board_copy, depth-1, max_player, min_player, time_limit, alpha, beta, True)
                 
                 if value < best_value:
                     best_value = value
@@ -215,6 +184,98 @@ class MinimaxPlayer(AgentPlayer):
                     break
                     
         return best_value, best_action
+
+    def sort_actions_by_heuristic(self, actions):
+        """根据启发式评估对动作进行排序"""
+        def action_priority(action):
+            start_x, start_y, end_x, end_y = action
+            goal_area = set(self.board.get_goal_area(self))
+            
+            # 计算移动前后到目标的距离
+            if self.color == "RED":
+                goal_center = (self.board.boardsize - 1, self.board.boardsize - 1)
+            else:
+                goal_center = (0, 0)
+            
+            start_dist = ((goal_center[0] - start_x) ** 2 + (goal_center[1] - start_y) ** 2) ** 0.5
+            end_dist = ((goal_center[0] - end_x) ** 2 + (goal_center[1] - end_y) ** 2) ** 0.5
+            distance_improvement = start_dist - end_dist
+            
+            # 优先级因素
+            priority = 0
+            
+            # 1. 距离改善程度
+            priority += distance_improvement * 10
+            
+            # 2. 跳跃移动奖励
+            if is_jump_move(self.board, action):
+                priority += 15
+            
+            # 3. 到达目标区域奖励
+            if (end_x, end_y) in goal_area:
+                priority += 50
+            
+            # 4. 方向性奖励
+            if self.color == "RED":
+                direction_score = (end_x - start_x) + (end_y - start_y)
+            else:
+                direction_score = (start_x - end_x) + (start_y - end_y)
+            priority += direction_score * 5
+            
+            # 5. 后退惩罚
+            if is_going_backwards(self.board.boardsize, action, self):
+                priority -= 30
+            
+            return priority
+        
+        return sorted(actions, key=action_priority, reverse=True)
+
+    def local_search_optimization(self, base_action, all_actions, time_limit):
+        """对找到的最佳动作进行局部搜索优化"""
+        if time.time() > time_limit - 0.5:
+            return base_action
+        
+        # 获取基础动作的评估值
+        base_value = evaluation_score(self.board, self, base_action)
+        best_action = base_action
+        best_value = base_value
+        
+        # 在基础动作周围搜索更好的选择
+        start_x, start_y, end_x, end_y = base_action
+        
+        # 寻找相似的动作（同一个棋子的其他移动）
+        similar_actions = [action for action in all_actions 
+                          if action[0] == start_x and action[1] == start_y]
+        
+        # 评估相似动作
+        for action in similar_actions:
+            if time.time() > time_limit - 0.2:
+                break
+                
+            # 使用更深的搜索评估这些动作
+            temp_board = self.board.clone()
+            temp_board.apply_action(action)
+            
+            # 进行一层额外的minimax搜索
+            opponent_idx = (self.index + len(self.board.players) // 2) % len(self.board.players)
+            opponent = self.board.players[opponent_idx]
+            
+            _, value = self.minimax(
+                temp_board,
+                min(2, self.depth - 1),
+                self,
+                opponent,
+                time_limit,
+                float("-inf"),
+                float("inf"),
+                False
+            )
+            
+            if value is not None and value > best_value:
+                best_value = value
+                best_action = action
+        
+        return best_action
 
 def evaluation_MCTS(board, player):
     """添加调试信息的评估函数"""
@@ -998,7 +1059,7 @@ class Neural_ApproximateQLearningPlayer(AgentPlayer):
                 piece.x, piece.y = end_x, end_y
 
                 # 调用evaluation函数评估当前动作的价值
-                value = evaluation_pre(self.board, self)
+                value = evaluation_classic(self.board, self)
 
                 # 恢复棋盘状态
                 piece.x, piece.y = temp_x, temp_y

@@ -30,9 +30,14 @@ class HumanPlayer(Player):
         return None
 
 class AgentPlayer(Player):
-    pass
+    def __init__(self, color):
+        super().__init__(color)
+        self.board = None
+    
+    def set_board(self, board):
+        self.board = board
 
-def evaluation(board, player):
+def evaluation_pre(board, player):
     val = 0
     goal_area = board.get_goal_area(player)
     
@@ -54,6 +59,47 @@ def evaluation(board, player):
     val *= -1
     return val
 
+def evaluation(board, player, action=None):
+    """
+    评估函数，可选择性地先应用action再评估
+    """
+    board_to_evaluate = board
+
+    if action:
+        temp_board = board.clone()  # 创建棋盘的深拷贝
+        start_x, start_y, end_x, end_y = action
+        pawn_to_move = temp_board.board[start_x][start_y]
+
+        if pawn_to_move is None:
+            return float("-inf")
+
+        # 在复制的棋盘上应用动作
+        temp_board.board[end_x][end_y] = pawn_to_move
+        temp_board.board[start_x][start_y] = None
+        pawn_to_move.move(end_x, end_y)  # 更新棋子内部状态 (x, y, is_in_goal, has_left_home)
+        
+        board_to_evaluate = temp_board # 后续评估使用复制的棋盘
+    
+    # 执行评估
+    val = 0
+    goal_area = board_to_evaluate.get_goal_area(player) # goal_area 是 (x,y) 坐标列表
+    
+    for i in range(board_to_evaluate.boardsize):
+        for j in range(board_to_evaluate.boardsize):
+            pawn_on_board = board_to_evaluate.board[i][j]
+            if pawn_on_board and pawn_on_board.player == player:
+                current_dist = 0
+                if goal_area: # 确保目标区域存在
+                    # 计算到最近目标点的曼哈顿距离
+                    current_dist = min(abs(i - gx) + abs(j - gy) for gx, gy in goal_area)
+                val += current_dist # 累加距离 (值越大越差)
+                
+                if goal_area and (i,j) in goal_area: # 如果棋子在目标区域
+                    val -= 1000 # 给予大的奖励 (减少总“距离”)
+    
+    val *= -1
+    return val
+
 class RandomPlayer(AgentPlayer):
     def get_action(self, actions):
         return random.choice(actions)
@@ -61,47 +107,35 @@ class RandomPlayer(AgentPlayer):
 class GreedyPlayer(AgentPlayer):
     def __init__(self, color):
         super().__init__(color)
-
-    def set_board(self, board):
-        self.board = board
     
     def get_action(self, actions):
         if not actions:
             return None
-            
+        
         best_action = None
+        best_actions = []
         best_value = float("-inf")
         
         for action in actions:
-            start_x, start_y, end_x, end_y = action
-            pawn = self.board.board[start_x][start_y]
-            temp_x, temp_y = pawn.x, pawn.y
-            
-            self.board.board[end_x][end_y] = pawn
-            self.board.board[start_x][start_y] = None
-            pawn.x, pawn.y = end_x, end_y
-            
-            value = evaluation(self.board, self)
-            
-            pawn.x, pawn.y = temp_x, temp_y
-            self.board.board[start_x][start_y] = pawn
-            self.board.board[end_x][end_y] = None
+            value = evaluation(self.board, self, action)
             
             if value > best_value:
                 best_value = value
                 best_action = action
-                
-        return best_action
+
+        for action in actions:
+            value = evaluation(self.board, self, action)
+            if value == best_value:
+                best_actions.append(action)
+
+        return random.choice(best_actions) if best_actions else best_action
+
 
 class MinimaxPlayer(AgentPlayer):
-    def __init__(self, color, depth=2, use_local_search=False):
+    def __init__(self, color, depth=2):
         super().__init__(color)
         self.depth = depth
-        self.use_local_search = use_local_search
         self.time_limit = 3.0
-    
-    def set_board(self, board):
-        self.board = board
     
     def get_action(self, actions):
         if not actions:
@@ -126,13 +160,13 @@ class MinimaxPlayer(AgentPlayer):
 
     def minimax(self, depth, max_player, min_player, time_limit, alpha, beta, is_max):
         if depth == 0 or time.time() > time_limit:
-            return evaluation(self.board, max_player), None
+            return evaluation_pre(self.board, max_player), None
         
         current_player = max_player if is_max else min_player
         actions = self.board.get_actions(current_player)
         
         if not actions:
-            return evaluation(self.board, max_player), None
+            return evaluation_pre(self.board, max_player), None
             
         best_action = None
         if is_max:
@@ -216,10 +250,7 @@ def evaluation_MCTS(board, player):
                     dist = abs(goal_center[0] - i) + abs(goal_center[1] - j)
                     normalized_dist = dist / max_possible_dist
                     normalized_dist_sum += normalized_dist
-                
-                # ... 其余代码保持不变 ...
     
-
     # 1. 目标区域棋子数量奖励（总分值占比40%）
     goal_progress = pieces_in_goal / 4  # 归一化到[0,1]
     goal_score = 0.4 * (1000 * goal_progress)  # 最高400分
@@ -308,7 +339,7 @@ class MCTSNode:
         state = next_board.get_state()
         if state:
             self.terminal = True
-            self.winner = state["winner"]
+            self.winner = state
         
         # 确保下一个玩家索引在有效范围内
         next_player_index = (self.player_index + 1) % len(next_board.players)
@@ -380,11 +411,7 @@ class MCTSPlayer(AgentPlayer):
         super().__init__(color)
         self.simulations = simulations
         self.time_limit = time_limit
-        self.board = None
     
-    def set_board(self, board):
-        self.board = board
-
     def get_action(self, actions):
         if not actions:
             return None
@@ -514,7 +541,7 @@ class MCTSPlayer(AgentPlayer):
         while depth < max_depth:
             state = board.get_state()
             if state:
-                if state["winner"] == self:
+                if state == self:
                     pieces_in_goal = sum(1 for i, j in board.get_goal_area(self)
                                     if board.board[i][j] and 
                                     board.board[i][j].player == self)
@@ -662,7 +689,6 @@ class ApproximateQLearningPlayer(AgentPlayer):
         self.feature_extractor = FeatureExtractor()
         self.previous_state = None
         self.previous_action = None
-        self.board = None
         
         # 初始化权重
         self.weights.update({
@@ -675,9 +701,6 @@ class ApproximateQLearningPlayer(AgentPlayer):
             'is_backwards': -1000,       # 加大后退惩罚
             'leaves_home': 200          # 增加离家奖励
         })
-    
-    def set_board(self, board):
-        self.board = board
     
     def get_qvalue(self, board, action):
         features = self.feature_extractor.get_features(board, self, action)
@@ -772,7 +795,7 @@ class ApproximateQLearningPlayer(AgentPlayer):
         state = board.get_state()
         
         # 1. 胜利奖励大幅提高
-        if state and state["winner"] == self:
+        if state and state == self:
             pieces_in_goal = sum(1 for i, j in board.get_goal_area(self)
                             if board.board[i][j] and 
                             board.board[i][j].player == self)
@@ -908,7 +931,16 @@ class Neural_ApproximateQLearningPlayer(AgentPlayer):
         self.target_network.load_state_dict(self.network.state_dict())
 
         self.optimizer = optim.Adam(self.network.parameters(), lr=lr)
-        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        # 检查 MPS (Metal Performance Shaders) 是否可用，其次是 CUDA，最后是 CPU
+        if torch.backends.mps.is_available():
+            self.device = torch.device("mps")
+        elif torch.cuda.is_available():
+            self.device = torch.device("cuda")
+        else:
+            self.device = torch.device("cpu")
+        
+        print(f"Using device: {self.device}") # 添加打印信息以确认设备
+
         self.network.to(self.device)
         self.target_network.to(self.device)
 
@@ -918,7 +950,6 @@ class Neural_ApproximateQLearningPlayer(AgentPlayer):
         self.target_update = 1000
         self.steps = 0
 
-        self.board = None
         self.last_action = None  # 用于记录上一次动作
 
     def set_board(self, board):
@@ -955,7 +986,7 @@ class Neural_ApproximateQLearningPlayer(AgentPlayer):
                 if piece and piece.player == self and (i, j) not in goal_area:
                     pieces_not_in_goal += 1
 
-        # 当只有四个棋子还未进入目标区域时，模拟Minimax逻辑
+        # 当只有2个棋子还未进入目标区域时，模拟Greedy逻辑
         if pieces_not_in_goal <= 2:
             best_value = float('-inf')
             best_action = None
@@ -971,7 +1002,7 @@ class Neural_ApproximateQLearningPlayer(AgentPlayer):
                 piece.x, piece.y = end_x, end_y
 
                 # 调用evaluation函数评估当前动作的价值
-                value = evaluation(self.board, self)
+                value = evaluation_pre(self.board, self)
 
                 # 恢复棋盘状态
                 piece.x, piece.y = temp_x, temp_y
@@ -1087,8 +1118,13 @@ class Neural_ApproximateQLearningPlayer(AgentPlayer):
         }, path)
 
     def load_model(self, path):
-        checkpoint = torch.load(path)
+        # 将模型加载到当前配置的设备上
+        checkpoint = torch.load(path, map_location=self.device)
         self.network.load_state_dict(checkpoint['network_state_dict'])
         self.target_network.load_state_dict(checkpoint['network_state_dict'])
         self.optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
         self.steps = checkpoint['steps']
+
+        # 确保网络在加载后仍在正确的设备上
+        self.network.to(self.device)
+        self.target_network.to(self.device)

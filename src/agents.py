@@ -1009,9 +1009,6 @@ class Neural_ApproximateQLearningPlayer(AgentPlayer):
 
         self.last_action = None  # 用于记录上一次动作
 
-    def set_board(self, board):
-        self.board = board
-
     def _is_reverse_action(self, action):
         """
         判断当前action是否为上一次action的反向操作，
@@ -1049,22 +1046,7 @@ class Neural_ApproximateQLearningPlayer(AgentPlayer):
             best_action = None
 
             for action in filtered_actions:
-                # 模拟执行动作
-                start_x, start_y, end_x, end_y = action
-                piece = self.board.board[start_x][start_y]
-                temp_x, temp_y = piece.x, piece.y
-
-                self.board.board[end_x][end_y] = piece
-                self.board.board[start_x][start_y] = None
-                piece.x, piece.y = end_x, end_y
-
-                # 调用evaluation函数评估当前动作的价值
-                value = evaluation_classic(self.board, self)
-
-                # 恢复棋盘状态
-                piece.x, piece.y = temp_x, temp_y
-                self.board.board[start_x][start_y] = piece
-                self.board.board[end_x][end_y] = None
+                value = evaluation_score(self.board, self, action)
 
                 if value > best_value:
                     best_value = value

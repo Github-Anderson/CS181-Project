@@ -17,6 +17,7 @@ class Engine:
 
     def start(self):
         self.gui = BoardGUI(self.board, self)
+        time.sleep(4)
         self.gui.after(10, self.game_loop)
         self.gui.mainloop()
 

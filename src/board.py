@@ -63,7 +63,6 @@ class Board:
 
     def clone(self):
         """创建棋盘的深度复制，确保玩家分数等状态独立"""
-        # 1. 创建一个新的 Board 实例，但不通过标准 __init__ 以避免不必要的重置
         new_board = object.__new__(Board)
 
         # 2. 复制棋盘的基本属性
@@ -79,13 +78,10 @@ class Board:
         player_map = {} 
 
         for original_player in self.players:
-            # 使用原始玩家的类和颜色创建新的玩家实例
-            # 这会调用如 MinimaxPlayer("RED") 这样的构造函数
-            cloned_player = original_player.__class__(original_player.color)
+            cloned_player = DefaultPlayer(original_player.color)
             cloned_player.score = original_player.score  # 复制当前分数
             cloned_player.index = original_player.index  # 复制索引
             
-            # 如果玩家是 AgentPlayer 或其子类 (拥有 board 属性和 set_board 方法)
             # 需要设置其 board 属性为 new_board
             if hasattr(cloned_player, 'set_board'):
                 cloned_player.set_board(new_board)

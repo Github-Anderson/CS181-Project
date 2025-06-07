@@ -37,6 +37,12 @@ class AgentPlayer(Player):
     def set_board(self, board):
         self.board = board
 
+
+class DefaultPlayer(AgentPlayer):
+    def get_action(self, actions):
+        return None
+
+
 def evaluation_classic(board, player):
     val = 0
     goal_area = board.get_goal_area(player)

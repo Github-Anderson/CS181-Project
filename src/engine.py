@@ -13,24 +13,19 @@ class Engine:
         self.waiting_for_human = False
         self.human_action = None
         self.turn_count = 0
-        self.stop_game = False  # 添加游戏停止标志
 
     def start(self):
         self.gui = BoardGUI(self.board, self)
-        time.sleep(4)
+        # time.sleep(4)
         self.gui.after(10, self.game_loop)
         self.gui.mainloop()
 
     def game_loop(self):
-        # 检查游戏停止标志
-        if self.stop_game:
-            return
-            
-        winning_player_or_none = self.board.get_state() # get_state() 返回 Player 对象或 None
+        game_state = self.board.get_state() # get_state() 返回 Player 对象或 None
 
-        if winning_player_or_none:
+        if game_state:
             self.game_over = True
-            winner = winning_player_or_none  # winner 是一个 Player 对象
+            winner = game_state # 返回获胜玩家
 
             message = ""
             if self.board.mode == 'score':
@@ -90,9 +85,7 @@ class Engine:
         # 更新分数显示
         self.gui.update_scores()
         
-        # 继续游戏循环（检查停止标志）
-        if not self.stop_game:
-            self.gui.after(10, self.game_loop)
+        self.gui.after(10, self.game_loop)
 
     def next_turn(self):
         """进入下一个玩家的回合"""
@@ -105,17 +98,9 @@ class Engine:
         # 切换到列表中的下一个玩家
         next_pos = (current_pos + 1) % len(self.players)
         self.current_player_index = self.players[next_pos].index
-    
-    def stop_current_game(self):
-        """停止当前游戏"""
-        self.stop_game = True
-        self.game_over = True
         
     def restart_game(self):
         """重新开始游戏"""
-        # 停止当前游戏
-        self.stop_current_game()
-        
         # 重置引擎状态
         self.stop_game = False
         self.game_over = False

@@ -4,7 +4,7 @@ from board import *
 import tkinter as tk
 
 class Engine:
-    def __init__(self, board : Board):
+    def __init__(self, board : Board, max_turns : int = 500):
         self.board = board
         self.players = board.players
         self.current_player_index = 0
@@ -13,6 +13,7 @@ class Engine:
         self.waiting_for_human = False
         self.human_action = None
         self.turn_count = 0
+        self.max_turns = max_turns
 
     def start(self):
         self.gui = BoardGUI(self.board, self)
@@ -21,6 +22,60 @@ class Engine:
         self.gui.mainloop()
 
     def game_loop(self):
+        # 检查是否达到最大回合数
+        if self.turn_count >= self.max_turns:
+            self.game_over = True
+            message = f"游戏达到最大回合数 ({self.max_turns}). "
+            winner = None # 初始化winner变量
+
+            # 检查是否有玩家已经通过常规方式获胜 (e.g. classic mode goal reached)
+            game_state_winner = self.board.get_state()
+            if game_state_winner:
+                winner = game_state_winner
+                winner_color_name = self.gui.color_names.get(winner.color, winner.color)
+                message = f"**{winner_color_name}** 玩家获胜!" # 覆盖最大回合数消息
+            else:
+                # 按目标区域棋子数决定胜负
+                pawns_in_goal_counts = {}
+                for player_obj in self.players: # 直接迭代 self.players
+                    goal_area = set(self.board.get_goal_area(player_obj))
+                    count = 0
+                    for r in range(self.board.boardsize):
+                        for c in range(self.board.boardsize):
+                            pawn = self.board.board[r][c]
+                            if pawn and pawn.player == player_obj and (r, c) in goal_area:
+                                count += 1
+                    pawns_in_goal_counts[player_obj] = count
+                
+                if not pawns_in_goal_counts:
+                    message += "平局!"
+                    # winner 保持 None
+                else:
+                    max_pawns = -1
+                    # Find max count first
+                    for player_obj in self.players: # 确保迭代 self.players
+                         if pawns_in_goal_counts[player_obj] > max_pawns:
+                            max_pawns = pawns_in_goal_counts[player_obj]
+
+                    # Identify all players with that max count
+                    winners_by_pawns = [p for p, count in pawns_in_goal_counts.items() if count == max_pawns and max_pawns > -1]
+
+                    if len(winners_by_pawns) == 1 and max_pawns > 0:
+                        winner = winners_by_pawns[0]
+                        winner_color_name = self.gui.color_names.get(winner.color, winner.color)
+                        message += f"目标区棋子最多者: **{winner_color_name}** ({max_pawns}个棋子)"
+                    elif len(winners_by_pawns) > 1 and max_pawns > 0:
+                        message += "平局! (多名玩家目标区棋子数相同: "
+                        winner_names = [self.gui.color_names.get(w.color, w.color) for w in winners_by_pawns]
+                        message += ", ".join(winner_names) + f" 均为{max_pawns}个)"
+                        # winner 保持 None
+                    else: # No player has any pawns in goal (max_pawns is 0 or -1)
+                        message += "平局! (无玩家在目标区有棋子或棋子数均为0)"
+                        # winner 保持 None
+            
+            self.gui.update_status(message)
+            return
+
         game_state = self.board.get_state() # get_state() 返回 Player 对象或 None
 
         if game_state:
@@ -105,7 +160,8 @@ class Engine:
         self.stop_game = False
         self.game_over = False
         self.current_player_index = 0
-        self.current_player = self.players[0]
+        # self.current_player = self.players[0] # current_player 会在 game_loop 开始时设置
+        self.current_player = None # 重置 current_player
         self.waiting_for_human = False
         self.human_action = None
         self.turn_count = 0

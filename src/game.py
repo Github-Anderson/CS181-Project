@@ -14,6 +14,8 @@ def readCommand(argv):
                         help='Game mode: classic or score.')
     parser.add_argument('-n', '--numplayers', type=int, choices=[2, 4], default=2,
                         help='Number of players: 2 or 4.')
+    parser.add_argument('--max_turns', type=int, default=500, 
+                        help='Maximum turns per game before draw/score evaluation.')
     parser.add_argument('-p1', '--player1', type=str, choices=['H', 'M', 'G', 'R', "AQL", "MCTS", "NAQL"], default='H',
                         help='Player 1 type: H, M, G, R, AQL, MCTS, or NAQL.')
     parser.add_argument('-p2', '--player2', type=str, choices=['H', 'M', 'G', 'R', "AQL", "MCTS", "NAQL"], default='H',
@@ -28,6 +30,7 @@ if __name__ == "__main__":
     boardsize = args.boardsize
     mode = args.mode
     numplayers = args.numplayers
+    max_turns = args.max_turns
 
     player1 = args.player1.upper()
     player2 = args.player2.upper()
@@ -84,5 +87,5 @@ if __name__ == "__main__":
         if not isinstance(player4, HumanPlayer) and not isinstance(player4, RandomPlayer):
             player4.set_board(board)
 
-    engine = Engine(board)
+    engine = Engine(board, max_turns)
     engine.start()

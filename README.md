@@ -5,7 +5,7 @@
 ### Usage
 
 ```
-python game.py [-h] [-s {8,10,12}] [-p1 {H,M,MLS,G,R,QL}] [-p2 {H,M,MLS,G,R,QL}]
+python game.py [-h] [-s {8,10,12}] [-p1 {H,M,MLS,G,R,QL,MCTS,NAQL}] [-p2 {H,M,MLS,G,R,QL,MCTS,NAQL}]
 ```
 
 To get full help, please run

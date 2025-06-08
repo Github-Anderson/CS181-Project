@@ -18,6 +18,8 @@ def create_player(player_type_str, color, board_size=8, model_path=None):
 
     if player_type_str == "M":
         player = MinimaxPlayer(color)
+    elif player_type_str == "MLS":
+        player = MinimaxPlayer(color, use_local_search=True)
     elif player_type_str == "G":
         player = GreedyPlayer(color)
     elif player_type_str == "R":
@@ -56,7 +58,7 @@ def create_player(player_type_str, color, board_size=8, model_path=None):
     return player
 
 class HeadlessEngine:
-    def __init__(self, board: Board, max_turns=500):
+    def __init__(self, board: Board, max_turns=50):
         self.board = board
         self.players = board.players # This is the list of player objects
         
@@ -121,19 +123,42 @@ class HeadlessEngine:
             final_winner_check = self.board.get_state()
             if final_winner_check:
                 self.winner = final_winner_check
-                # print(f"Winner after max turns (by game rules): {self.winner.color}")
-            else: # No winner by game rules yet
-                if self.board.mode == 'score':
-                    self.winner = self.board.get_max_player() # Player object or None
-                    if self.winner:
-                        pass
-                        # print(f"Winner in score mode (max turns, highest score): {self.winner.color} with {self.winner.score} points.")
-                    else: 
-                        # print("Max turns in score mode, but no player found by get_max_player(). Declaring draw.")
+                print(f"Winner after max turns (by game rules): {self.winner.color}")
+            else: # No winner by game rules yet, decide by pawns in goal
+                pawns_in_goal_counts = {}
+                for player_obj in self.players:
+                    goal_area = set(self.board.get_goal_area(player_obj))
+                    count = 0
+                    for r in range(self.board.boardsize):
+                        for c in range(self.board.boardsize):
+                            pawn = self.board.board[r][c]
+                            if pawn and pawn.player == player_obj and (r, c) in goal_area:
+                                count += 1
+                    pawns_in_goal_counts[player_obj] = count
+                
+                if not pawns_in_goal_counts:
+                    print("Max turns reached. No players found for pawn count. Declaring draw.")
+                    self.winner = None
+                else:
+                    max_pawns = -1
+                    # Find max count first
+                    for player_obj in self.players:
+                        if pawns_in_goal_counts[player_obj] > max_pawns:
+                            max_pawns = pawns_in_goal_counts[player_obj]
+                    
+                    # Identify all players with that max count
+                    winners_by_pawns = [p for p, count in pawns_in_goal_counts.items() if count == max_pawns and max_pawns > -1]
+
+                    if len(winners_by_pawns) == 1 and max_pawns > 0:
+                        self.winner = winners_by_pawns[0]
+                        print(f"Winner by most pawns in goal ({max_pawns}): {self.winner.color}")
+                    elif len(winners_by_pawns) > 1 and max_pawns > 0: # Multiple players with same max pawns
+                        winner_colors = [w.color for w in winners_by_pawns]
+                        print(f"Draw by most pawns in goal. Players {', '.join(winner_colors)} all have {max_pawns} pawns.")
                         self.winner = None # Draw
-                else: # classic mode, max_turns reached, no winner by goal
-                    # print("Max turns reached in classic mode, no standard winner. Declaring draw for this game.")
-                    self.winner = None # Draw
+                    else: # No player has pawns in goal (max_pawns is 0 or -1)
+                        print("Max turns reached. No player has pawns in their goal area or pawn counts are all zero. Declaring draw.")
+                        self.winner = None # Draw
             self.game_over = True
 
         return self.winner # Returns Player object or None (for a draw)
@@ -199,9 +224,9 @@ def main():
     parser.add_argument('-s', '--boardsize', type=int, choices=[4, 8, 10, 12], default=8, help='Board size.')
     parser.add_argument('-m', '--mode', type=str, choices=['classic', 'score'], default='classic', help='Game mode.')
     parser.add_argument('-n', '--numplayers', type=int, choices=[2, 4], default=2, help='Number of players.')
-    parser.add_argument('--max_turns', type=int, default=500, help='Maximum turns per game before draw.')
+    parser.add_argument('--max_turns', type=int, default=50, help='Maximum turns per game before draw.')
 
-    player_choices = ['M', 'G', 'R', 'MCTS', 'AQL', 'NAQL']
+    player_choices = ['M', 'MLS', 'G', 'R', 'MCTS', 'AQL', 'NAQL']
     parser.add_argument('-p1', '--player1_type', type=str, choices=player_choices, default='G', help='Player 1 (RED) type.')
     parser.add_argument('--p1_model', type=str, default=None, help="Path to Player 1's NAQL model.")
     

@@ -55,19 +55,13 @@ def create_player(player_type_str, color, board_size=8, model_path=None):
         raise ValueError(f"Failed to create player for type: {player_type_str}")
     return player
 
-def run_single_match(p1_config, p2_config, p3_config, p4_config, board_size, game_mode, num_players, max_turns_for_game):
+def run_single_match(p1_config, p2_config, board_size, game_mode, max_turns_for_game):
     players_for_board = []
 
     p1 = create_player(p1_config['type'], "RED", board_size, p1_config.get('model'))
     players_for_board.append(p1)
     p2 = create_player(p2_config['type'], "GREEN", board_size, p2_config.get('model'))
     players_for_board.append(p2)
-
-    if num_players == 4:
-        p3 = create_player(p3_config['type'], "BLUE", board_size, p3_config.get('model'))
-        players_for_board.append(p3)
-        p4 = create_player(p4_config['type'], "YELLOW", board_size, p4_config.get('model'))
-        players_for_board.append(p4)
 
     current_board = Board(board_size, game_mode, players_for_board)
 
@@ -103,7 +97,7 @@ def read_command(argv):
     parser.add_argument('-m', '--mode', type=str, choices=['classic', 'score'], default='score', help='Game mode.')
     parser.add_argument('--max_turns', type=int, default=utils.MAX_TURNS, help='Maximum turns per game before draw.')
 
-    parser.add_argument('', '--jump_score_mode', type=str, choices=['list', 'search'], default='search', help='Mode for testing jump_scalar: "list" to iterate through utils.jump_scalars, "search" for binary search.')
+    parser.add_argument('-j', '--jump_score_mode', type=str, choices=['list', 'search'], default='search', help='Mode for testing jump_scalar: "list" to iterate through utils.jump_scalars, "search" for binary search.')
 
     args = parser.parse_args()
     return args
@@ -111,27 +105,19 @@ def read_command(argv):
 def main():
     args = read_command(sys.argv[1:])
 
-    p1_config = {'type': args.player1_type, 'model': args.p1_model, 'name': f"{args.player1_type}(RED)"}
-    p2_config = {'type': args.player2_type, 'model': args.p2_model, 'name': f"{args.player2_type}(GREEN)"}
-    p3_config = {'type': args.player3_type, 'model': args.p3_model, 'name': f"{args.player3_type}(BLUE)"}
-    p4_config = {'type': args.player4_type, 'model': args.p4_model, 'name': f"{args.player4_type}(YELLOW)"}
+    p1_config = {'type': args.player1_type, 'name': f"{args.player1_type}(RED)"}
+    p2_config = {'type': args.player2_type, 'name': f"{args.player2_type}(GREEN)"}
 
     player_names_map = {
         "RED": p1_config['name'],
         "GREEN": p2_config['name'],
         "DRAW": "Draws"
     }
-    if args.numplayers == 4:
-        player_names_map["BLUE"] = p3_config['name']
-        player_names_map["YELLOW"] = p4_config['name']
-
+    
     print("--- Test Setup ---")
-    print(f"Player 1 (RED): {p1_config['type']} {'(Model: ' + p1_config['model'] + ')' if p1_config['model'] else ''}")
-    print(f"Player 2 (GREEN): {p2_config['type']} {'(Model: ' + p2_config['model'] + ')' if p2_config['model'] else ''}")
-    if args.numplayers == 4:
-        print(f"Player 3 (BLUE): {p3_config['type']} {'(Model: ' + p3_config['model'] + ')' if p3_config['model'] else ''}")
-        print(f"Player 4 (YELLOW): {p4_config['type']} {'(Model: ' + p4_config['model'] + ')' if p4_config['model'] else ''}")
-    print(f"Board Size: {args.boardsize}, Mode: {args.mode}, Num Players: {args.numplayers}")
+    print(f"Player 1 (RED): {p1_config['type']}")
+    print(f"Player 2 (GREEN): {p2_config['type']}")
+    print(f"Board Size: {args.boardsize}, Mode: {args.mode}")
     print(f"Repetitions per test: {args.repetitions}, Max Turns per game: {args.max_turns}")
     print(f"Jump Score Mode: {args.jump_score_mode}")
     print(f"IMPORTANT: jump_scalar is now read from 'utils.py' by 'board.py'.")
@@ -156,8 +142,8 @@ def main():
                 # print(f"  Game {i+1}/{args.repetitions} for jump_scalar = {utils.jump_scalar:.4f}...")
                 start_time = time.time()
                 winner_color, ended_by_max_turns, game_turns = run_single_match(
-                    p1_config, p2_config, p3_config, p4_config,
-                    args.boardsize, args.mode, args.numplayers, args.max_turns
+                    p1_config, p2_config,
+                    args.boardsize, args.mode, args.max_turns
                 )
                 game_duration = time.time() - start_time
                 total_game_time_current_scalar += game_duration
@@ -205,7 +191,7 @@ def main():
                 # print(f"  Game {i+1}/{args.repetitions} for jump_scalar = {utils.jump_scalar:.4f}...")
                 start_time = time.time()
                 winner_color, ended_by_max_turns, game_turns = run_single_match(
-                    p1_config, p2_config, p3_config, p4_config,
+                    p1_config, p2_config,
                     args.boardsize, args.mode, args.numplayers, args.max_turns
                 )
                 current_run_total_time += (time.time() - start_time)
@@ -243,8 +229,8 @@ def main():
             # print(f"Starting Game {i+1}/{args.repetitions} for optimal jump_scalar = {utils.jump_scalar:.4f}...")
             start_time = time.time()
             winner_color, ended_by_max_turns, game_turns = run_single_match(
-                p1_config, p2_config, p3_config, p4_config,
-                args.boardsize, args.mode, args.numplayers, args.max_turns
+                p1_config, p2_config,
+                args.boardsize, args.mode, args.max_turns
             )
             game_duration = time.time() - start_time
             total_game_time_validation += game_duration

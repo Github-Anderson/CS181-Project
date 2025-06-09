@@ -43,7 +43,7 @@ class DefaultPlayer(AgentPlayer):
         return None
 
 
-def evaluation_classic(board, player):
+def evaluation_min(board, player):
     val = 0
     goal_area = board.get_goal_area(player)
     
@@ -65,18 +65,53 @@ def evaluation_classic(board, player):
     val *= -1
     return val
 
-def evaluation_score(board, player, action=None):
-    if action is None:
-        return evaluation_classic(board, player)
+def evaluation_max(board, player):
+    val = 0
+    goal_area = board.get_goal_area(player)
     
+    for i in range(board.boardsize):
+        for j in range(board.boardsize):
+            pawn = board.board[i][j]
+            if pawn and pawn.player.color == player.color:
+                goal_distances = []
+                for goal_x, goal_y in goal_area:
+                    if board.board[goal_x][goal_y] is None or board.board[goal_x][goal_y].player != player:
+                        distance = ((goal_x - i) ** 2 + (goal_y - j) ** 2) ** 0.5
+                        goal_distances.append(distance)
+                
+                if goal_distances:
+                    val += max(goal_distances)
+                else:
+                    val -= 20
+    
+    val *= -1
+    return val
+
+def evaluation_min_score(board, player, action=None):
+    if action is None:
+        return evaluation_min(board, player)
+
     board_copy = board.clone()
     board_copy.apply_action(action)
 
     if board.mode == "classic":
-        return evaluation_classic(board_copy, player)
+        return evaluation_min(board_copy, player)
 
     if board.mode == "score":
-        return evaluation_classic(board_copy, player) + board.get_action_score(action)
+        return evaluation_min(board_copy, player) + board.get_action_score(action)
+
+def evaluation_max_score(board, player, action=None):
+    if action is None:
+        return evaluation_max(board, player)
+
+    board_copy = board.clone()
+    board_copy.apply_action(action)
+
+    if board.mode == "classic":
+        return evaluation_max(board_copy, player)
+
+    if board.mode == "score":
+        return evaluation_min(board_copy, player) + board.get_action_score(action)
 
 class RandomPlayer(AgentPlayer):
     def get_action(self, actions):
@@ -94,13 +129,13 @@ class GreedyPlayer(AgentPlayer):
         best_value = float("-inf")
         
         for action in actions:
-            value = evaluation_score(self.board, self, action)
+            value = evaluation_min_score(self.board, self, action)
 
             if value > best_value:
                 best_value = value
-        
+
         for action in actions:
-            value = evaluation_score(self.board, self, action)
+            value = evaluation_min_score(self.board, self, action)
             if value == best_value:
                 best_actions.append(action)
                 
@@ -137,7 +172,7 @@ class MinimaxPlayer(AgentPlayer):
 
     def minimax(self, depth, max_player, min_player, time_limit, alpha, beta, is_max, use_local_search=False):
         if depth == 0 or time.time() > time_limit:
-            return evaluation_score(self.board, max_player), None
+            return evaluation_max_score(self.board, max_player), None
 
         current_player = max_player if is_max else min_player
 
@@ -148,7 +183,7 @@ class MinimaxPlayer(AgentPlayer):
             actions = self.board.get_actions(current_player)
 
         if not actions:
-            return evaluation_score(self.board, max_player), None
+            return evaluation_max_score(self.board, max_player), None
 
         best_action = None
         if is_max:
@@ -230,7 +265,7 @@ class MinimaxPlayer(AgentPlayer):
                 self.board.board[start_x][start_y] = None
                 pawn.x, pawn.y = end_x, end_y
 
-                val = evaluation_score(self.board, player)
+                val = evaluation_max_score(self.board, player)
 
                 pawn.x, pawn.y = temp_x, temp_y
                 self.board.board[start_x][start_y] = pawn
@@ -1012,7 +1047,7 @@ class Neural_ApproximateQLearningPlayer(AgentPlayer):
             best_action = None
 
             for action in filtered_actions:
-                value = evaluation_score(self.board, self, action)
+                value = evaluation_max_score(self.board, self, action)
 
                 if value > best_value:
                     best_value = value

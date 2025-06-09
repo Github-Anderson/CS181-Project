@@ -58,7 +58,7 @@ def evaluation_classic(board, player):
                         goal_distances.append(distance)
                 
                 if goal_distances:
-                    val += max(goal_distances)
+                    val += min(goal_distances)
                 else:
                     val -= 20
     

@@ -1,5 +1,5 @@
 from agents import *
-from utils import *
+import utils
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -225,7 +225,7 @@ class Board:
     def get_actions(self, player : Player) -> list[tuple[int, int, int, int]]:
         """获取当前玩家的所有合法动作"""
         actions = set()
-        directions = list(DIRECTION_OFFSET.values())
+        directions = list(utils.DIRECTION_OFFSET.values())
         
         home_area = set(self.get_home_area(player))
         goal_area = set(self.get_goal_area(player))
@@ -285,7 +285,7 @@ class Board:
     def get_actions_with_jump(self, player: Player) -> list[tuple[tuple[int, int, int, int], int]]:
         """获取当前玩家的所有合法动作及其连跳次数"""
         actions_with_jumps = []
-        directions = list(DIRECTION_OFFSET.values())
+        directions = list(utils.DIRECTION_OFFSET.values())
         
         home_area = set(self.get_home_area(player))
         goal_area = set(self.get_goal_area(player))
@@ -389,7 +389,7 @@ class Board:
         # 连跳得分：连跳n次得n分，但前提是棋子移动前不在目标区域且不在家区域
         is_in_home_area = (start_x, start_y) in home_area
         if jump_count > 0 and not was_in_goal and not is_in_home_area:
-            score += jump_count * 10
+            score += jump_count * utils.jump_scalar
 
         # 检查此动作是否导致玩家所有棋子都进入目标区域
         # 首先，统计玩家棋子总数，并检查在此动作之前是否所有棋子都已在目标区

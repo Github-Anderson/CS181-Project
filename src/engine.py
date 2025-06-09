@@ -183,6 +183,134 @@ class Engine:
             self.human_action = action
 
 
+class HeadlessEngine:
+    def __init__(self, board: Board, max_turns=MAX_TURNS):
+        self.board = board
+        self.players = board.players # This is the list of player objects
+        
+        if not self.players:
+            raise ValueError("Player list is empty in HeadlessEngine.")
+        # Start with the canonical index of the first player in the board's player list
+        self.current_player_canonical_index = self.players[0].index 
+        
+        self.game_over = False
+        self.winner = None # Stores the winning Player object
+        self.game_turn_count = 0 # Counts number of moves made
+        self.max_turns = max_turns # To prevent infinite games
+
+    def run_game(self):
+        while not self.game_over and self.game_turn_count < self.max_turns:
+            # Check for game end condition based on board state
+            game_state_winner = self.board.get_state() 
+            if game_state_winner:
+                self.game_over = True
+                self.winner = game_state_winner
+                print(f"Game over. Winner by game rules: {self.winner.color}")
+                break
+
+            current_player_obj = None
+            for p in self.players:
+                if p.index == self.current_player_canonical_index:
+                    current_player_obj = p
+                    break
+            
+            if current_player_obj is None:
+                print(f"Error: Could not find player with canonical index {self.current_player_canonical_index}")
+                self.game_over = True # End game if error
+                break
+
+            actions = self.board.get_actions(current_player_obj)
+            
+            if not actions:
+                # print(f"Player {current_player_obj.color} has no actions. Skipping turn.")
+                self.next_turn()
+                continue
+
+            action = current_player_obj.get_action(actions)
+            
+            if action is None:
+                if actions: # Agent failed to pick an action but actions were available
+                    print(f"Warning: Player {current_player_obj.color} ({type(current_player_obj).__name__}) returned None action despite available actions. Choosing random.")
+                    action = random.choice(actions)
+                else: # No actions available, already handled by the 'if not actions:' block
+                    self.next_turn()
+                    continue
+            
+            self.board.apply_action(action)
+            self.game_turn_count += 1
+            # print(f"Turn {self.game_turn_count}: Player {current_player_obj.color} ({type(current_player_obj).__name__}) takes action {action}")
+            # print(self.board) # Optional: print board state for debugging
+            self.next_turn()
+
+        # After loop: game ended either by win condition or max_turns
+        if not self.game_over and self.game_turn_count >= self.max_turns:
+            # print(f"Game ended due to max turns ({self.max_turns}).")
+            # Try to get winner via get_state() one last time (e.g. if last move was winning)
+            final_winner_check = self.board.get_state()
+            if final_winner_check:
+                self.winner = final_winner_check
+                print(f"Winner after max turns (by game rules): {self.winner.color}")
+            else: # No winner by game rules yet, decide by pawns in goal
+                pawns_in_goal_counts = {}
+                for player_obj in self.players:
+                    goal_area = set(self.board.get_goal_area(player_obj))
+                    count = 0
+                    for r in range(self.board.boardsize):
+                        for c in range(self.board.boardsize):
+                            pawn = self.board.board[r][c]
+                            if pawn and pawn.player == player_obj and (r, c) in goal_area:
+                                count += 1
+                    pawns_in_goal_counts[player_obj] = count
+                
+                if not pawns_in_goal_counts:
+                    print("Max turns reached. No players found for pawn count. Declaring draw.")
+                    self.winner = None
+                else:
+                    max_pawns = -1
+                    # Find max count first
+                    for player_obj in self.players:
+                        if pawns_in_goal_counts[player_obj] > max_pawns:
+                            max_pawns = pawns_in_goal_counts[player_obj]
+                    
+                    # Identify all players with that max count
+                    winners_by_pawns = [p for p, count in pawns_in_goal_counts.items() if count == max_pawns and max_pawns > -1]
+
+                    if len(winners_by_pawns) == 1 and max_pawns > 0:
+                        self.winner = winners_by_pawns[0]
+                        print(f"Winner by most pawns in goal ({max_pawns}): {self.winner.color}")
+                    elif len(winners_by_pawns) > 1 and max_pawns > 0: # Multiple players with same max pawns
+                        winner_colors = [w.color for w in winners_by_pawns]
+                        print(f"Draw by most pawns in goal. Players {', '.join(winner_colors)} all have {max_pawns} pawns.")
+                        self.winner = None # Draw
+                    else: # No player has pawns in goal (max_pawns is 0 or -1)
+                        print("Max turns reached. No player has pawns in their goal area or pawn counts are all zero. Declaring draw.")
+                        self.winner = None # Draw
+            self.game_over = True
+
+        return self.winner # Returns Player object or None (for a draw)
+
+    def next_turn(self):
+        current_player_list_position = -1
+        # Find current player in the self.players list (which is ordered) by its canonical index
+        for i, p_in_list in enumerate(self.players):
+            if p_in_list.index == self.current_player_canonical_index:
+                current_player_list_position = i
+                break
+        
+        if current_player_list_position == -1:
+            # This should not happen if current_player_canonical_index is always valid
+            print(f"Error: Could not find current player with canonical index {self.current_player_canonical_index} in player list.")
+            # Fallback: cycle through the list directly, though this might break turn order logic if indices are complex
+            # For safety, just move to the first player's index if lost.
+            self.current_player_canonical_index = self.players[0].index
+            return
+
+        # Get the next player from the list by cycling list position
+        next_player_list_position = (current_player_list_position + 1) % len(self.players)
+        # Update current_player_canonical_index to the canonical index of the next player
+        self.current_player_canonical_index = self.players[next_player_list_position].index
+
+
 class BoardGUI(tk.Tk):
     def __init__(self, board : Board, engine : Engine, *args, **kwargs):
         # initialize parent tk class

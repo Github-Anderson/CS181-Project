@@ -1,5 +1,5 @@
 from agents import *
-from utils import *
+import utils
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -63,7 +63,6 @@ class Board:
 
     def clone(self):
         """创建棋盘的深度复制，确保玩家分数等状态独立"""
-        # 1. 创建一个新的 Board 实例，但不通过标准 __init__ 以避免不必要的重置
         new_board = object.__new__(Board)
 
         # 2. 复制棋盘的基本属性
@@ -79,13 +78,10 @@ class Board:
         player_map = {} 
 
         for original_player in self.players:
-            # 使用原始玩家的类和颜色创建新的玩家实例
-            # 这会调用如 MinimaxPlayer("RED") 这样的构造函数
-            cloned_player = original_player.__class__(original_player.color)
+            cloned_player = DefaultPlayer(original_player.color)
             cloned_player.score = original_player.score  # 复制当前分数
             cloned_player.index = original_player.index  # 复制索引
             
-            # 如果玩家是 AgentPlayer 或其子类 (拥有 board 属性和 set_board 方法)
             # 需要设置其 board 属性为 new_board
             if hasattr(cloned_player, 'set_board'):
                 cloned_player.set_board(new_board)
@@ -229,7 +225,7 @@ class Board:
     def get_actions(self, player : Player) -> list[tuple[int, int, int, int]]:
         """获取当前玩家的所有合法动作"""
         actions = set()
-        directions = list(DIRECTION_OFFSET.values())
+        directions = list(utils.DIRECTION_OFFSET.values())
         
         home_area = set(self.get_home_area(player))
         goal_area = set(self.get_goal_area(player))
@@ -289,7 +285,7 @@ class Board:
     def get_actions_with_jump(self, player: Player) -> list[tuple[tuple[int, int, int, int], int]]:
         """获取当前玩家的所有合法动作及其连跳次数"""
         actions_with_jumps = []
-        directions = list(DIRECTION_OFFSET.values())
+        directions = list(utils.DIRECTION_OFFSET.values())
         
         home_area = set(self.get_home_area(player))
         goal_area = set(self.get_goal_area(player))
@@ -393,7 +389,7 @@ class Board:
         # 连跳得分：连跳n次得n分，但前提是棋子移动前不在目标区域且不在家区域
         is_in_home_area = (start_x, start_y) in home_area
         if jump_count > 0 and not was_in_goal and not is_in_home_area:
-            score += jump_count * 10
+            score += jump_count * utils.jump_scalar
 
         # 检查此动作是否导致玩家所有棋子都进入目标区域
         # 首先，统计玩家棋子总数，并检查在此动作之前是否所有棋子都已在目标区

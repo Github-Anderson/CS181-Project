@@ -92,7 +92,7 @@ def train(episodes=150, save_interval=15):  # 增加训练轮数
     players = [opponent, agent]  # 注意顺序：先手在前
     
     # 初始化棋盘
-    board = Board(boardsize=8, players=players)
+    board = Board(boardsize=8, mode="classic", players=players)
     
     # 设置玩家的棋盘引用
     agent.set_board(board)

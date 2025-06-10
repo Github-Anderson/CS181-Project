@@ -1,6 +1,15 @@
 from typing import Tuple
 from enum import Enum
 
+MAX_TURNS = 100
+MIN_JUMP_SCALAR = 0.0
+MAX_JUMP_SCALAR = 10.0
+MAX_TURN_DRAW_FRAC_THRESHOLD = 0.50
+BINARY_SEARCH_STEPS = 10
+DEFAULT_ROUND = 100
+jump_scalar = 1.0
+jump_scalars = [1.0, 1.2, 1.5, 2.0, 5.0, 10.0]
+
 class Direction(Enum):
     UP = "UP"
     DOWN = "DOWN"

@@ -1047,7 +1047,7 @@ class Neural_ApproximateQLearningPlayer(AgentPlayer):
             best_action = None
 
             for action in filtered_actions:
-                value = evaluation_max_score(self.board, self, action)
+                value = evaluation_min_score(self.board, self, action)
 
                 if value > best_value:
                     best_value = value

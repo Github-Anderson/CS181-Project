@@ -57,7 +57,7 @@ def create_player(player_type_str, color, board_size=8, model_path=None):
         raise ValueError(f"Failed to create player for type: {player_type_str}")
     return player
 
-def run_single_match(p1_config, p2_config, p3_config, p4_config, board_size, game_mode, num_players):
+def run_single_match(p1_config, p2_config, board_size, game_mode):
     players_for_board = []
     
     # Create Player 1 (RED)
@@ -67,14 +67,6 @@ def run_single_match(p1_config, p2_config, p3_config, p4_config, board_size, gam
     # Create Player 2 (GREEN)
     p2 = create_player(p2_config['type'], "GREEN", board_size, p2_config.get('model'))
     players_for_board.append(p2)
-
-    if num_players == 4:
-        # Create Player 3 (BLUE)
-        p3 = create_player(p3_config['type'], "BLUE", board_size, p3_config.get('model'))
-        players_for_board.append(p3)
-        # Create Player 4 (YELLOW)
-        p4 = create_player(p4_config['type'], "YELLOW", board_size, p4_config.get('model'))
-        players_for_board.append(p4)
     
     board = Board(board_size, game_mode, players_for_board)
 
@@ -104,7 +96,7 @@ def read_command(argv):
     parser.add_argument('-p2', '--player2_type', type=str, choices=player_choices, default='G', help='Player 2 (GREEN) type.')
     parser.add_argument('--p2_model', type=str, default=None, help="Path to Player 2's NAQL model.")
 
-    args = parser.parse_args()
+    return parser.parse_args(argv)
 
 def main():
     args = read_command(sys.argv[1:])
@@ -112,20 +104,15 @@ def main():
     # Prepare player configurations
     p1_config = {'type': args.player1_type, 'model': args.p1_model, 'name': f"{args.player1_type}(RED)"}
     p2_config = {'type': args.player2_type, 'model': args.p2_model, 'name': f"{args.player2_type}(GREEN)"}
-    p3_config = {'type': args.player3_type, 'model': args.p3_model, 'name': f"{args.player3_type}(BLUE)"}
-    p4_config = {'type': args.player4_type, 'model': args.p4_model, 'name': f"{args.player4_type}(YELLOW)"}
 
     win_counts = defaultdict(int)
     total_game_time = 0
 
     print(f"--- Autograder Setup ---")
-    print(f"Board Size: {args.boardsize}, Mode: {args.mode}, Num Players: {args.numplayers}")
+    print(f"Board Size: {args.boardsize}, Mode: {args.mode}, Num Players: 2")
     print(f"Repetitions: {args.repetitions}, Max Turns: {args.max_turns}")
     print(f"Player 1 (RED): {p1_config['type']} {'(Model: ' + p1_config['model'] + ')' if p1_config['model'] else ''}")
     print(f"Player 2 (GREEN): {p2_config['type']} {'(Model: ' + p2_config['model'] + ')' if p2_config['model'] else ''}")
-    if args.numplayers == 4:
-        print(f"Player 3 (BLUE): {p3_config['type']} {'(Model: ' + p3_config['model'] + ')' if p3_config['model'] else ''}")
-        print(f"Player 4 (YELLOW): {p4_config['type']} {'(Model: ' + p4_config['model'] + ')' if p4_config['model'] else ''}")
     print("-------------------------")
 
     for i in range(args.repetitions):
@@ -133,8 +120,8 @@ def main():
         start_time = time.time()
         
         winner_color = run_single_match(
-            p1_config, p2_config, p3_config, p4_config,
-            args.boardsize, args.mode, args.numplayers
+            p1_config, p2_config,
+            args.boardsize, args.mode
         )
         
         game_duration = time.time() - start_time
@@ -149,8 +136,6 @@ def main():
     player_names_map = {
         "RED": p1_config['name'],
         "GREEN": p2_config['name'],
-        "BLUE": p3_config['name'],
-        "YELLOW": p4_config['name'],
         "DRAW": "Draws"
     }
 

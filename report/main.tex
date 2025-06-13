@@ -10,6 +10,14 @@
 \usepackage{diagbox}
 \usepackage{graphicx}
 \usepackage{makecell}
+\usepackage{hyperref}
+\usepackage{algorithm}
+\usepackage{algpseudocode}
+\hypersetup{hypertex=true,
+colorlinks=true,
+linkcolor=red,
+anchorcolor=blue,
+citecolor=blue}
 \frenchspacing
 \setlength{\pdfpagewidth}{8.5in}
 \setlength{\pdfpageheight}{11in}
@@ -21,11 +29,11 @@
 % The file aaai.sty is the style file for AAAI Press 
 % proceedings, working notes, and technical reports.
 %
-\title{AI for Draught}
+\title{AI Agents for Halma}
 \author{Zhangzhi Xiong, Tianni Yang, Lingkang Feng\\
 School of Information Science and Technology\\
 ShanghaiTech University\\
-{\tt\small \{xiongzhzh2023, ??, ??\}@shanghaitech.edu.cn}\\
+{\tt\small \{xiongzhzh2023, yangtn2023, fenglk2022\}@shanghaitech.edu.cn}\\
 }
 \maketitle
 
@@ -33,5 +41,10 @@ ShanghaiTech University\\
 \input{chapters/1-introduction}
 \input{chapters/2-method}
 \input{chapters/3-result}
-
+\input{chapters/4-rule}
+\input{chapters/5-analysis}
+\input{chapters/6-external}
+\newpage
+\bibliography{ref} % Use the name of your .bib file without the .bib extension
+\bibliographystyle{aaai} % Ensure this is present
 \end{document}

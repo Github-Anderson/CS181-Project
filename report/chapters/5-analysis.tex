@@ -1,0 +1,45 @@
+% filepath: report/5-analysis.tex
+\section{Analysis}
+
+\subsection{Sente vs. Gote Advantage}
+In Halma, the first player (Sente) and second player roles can influence outcomes due to the game's turn-based nature and board asymmetry. To assess this, we calculate the total wins for each agent across all matches.
+
+Out of 2,990 games, Sente won 1,184 ($\approx 39.6\%$), and Gote won 1,806 ($\approx 60.4\%$), showing a substantial Gote advantage.
+
+The two deterministic, depth-2 search agents (Minimax, MLS) are the main culprits—Sente never wins against itself, so every mirror match gives Gote a free +100\%. Stochastic or learning-based agents (Greedy, MCTS, AQL, NAQL) either swing the other way or stay close to parity, which is why the global numbers are not even more skewed.
+
+\subsection{Strategy Performance Analysis}
+
+\subsubsection{Greedy (G)}
+The Greedy (G) agent, which selects uniformly at random from the set of actions that maximise a hand-crafted heuristic, achieves an impressive overall win-rate of roughly 80\%. Although it is conceptually simple and myopic, the stochastic tie-breaking injects a degree of variability that prevents opponents from over-fitting to a single deterministic line of play.
+
+\subsubsection{Minimax (M)}
+The Minimax (M) agent employs a two-ply $\alpha - \beta$ search with a static evaluation function. Owing to its fixed depth and the absence of any randomisation in move selection, its behaviour is fully deterministic. The shallow search horizon leaves it vulnerable to longer-term tactical refutations, which is reflected in its comparatively poor empirical performance.
+
+\subsubsection{Minimax Local Search (MLS)}
+The Minimax Local Search (MLS) agent augments the basic Minimax procedure with a local move-reordering heuristic that slightly improves the quality of its principal variations. While this modification yields a modest gain in win-rate relative to the plain Minimax player, the agent remains deterministic and inherits the same fundamental depth-limitation.
+
+\subsubsection{Monte Carlo Tree Search (MCTS)}
+The Monte Carlo Tree Search (MCTS) agent serves as a mid-level baseline. It balances exploration and exploitation through UCT and, by averaging over thousands of playouts, produces solid but unspectacular play. Empirically, its win-rate hovers around the centre of the field, outperforming the deterministic searchers yet falling short of the learning-based agents and the strong Greedy heuristic.
+
+\subsubsection{Approximate Q‑Learning (AQL)}
+The Approximate Q-Learning (AQL) agent represents each state–action value as a linear combination of domain-specific features updated via temporal-difference learning. Against search-based opponents—particularly the Minimax variants—it secures a clear statistical edge, indicating that even a relatively low-capacity function approximator can capture strategic patterns that elude shallow search.
+
+\subsubsection{Neural Appraoximate Q‑Learning (NAQL)}
+The Neural Approximate Q-Learning (NAQL) agent replaces the linear approximator with a deep neural network trained through self-play primarily against the Minimax family. This targeted curriculum yields dramatic gains: NAQL dominates both Minimax and MLS and remains competitive with Greedy and MCTS. Its performance underscores the advantages of high-capacity function approximation combined with adversarial training.
+
+\subsection{Key Insights}
+Collectively, the results demonstrate that no single paradigm is universally dominant. Simple, well-tuned heuristics (Greedy) can outperform more sophisticated search when the heuristic aligns closely with the game’s true value landscape. Conversely, shallow deterministic search (Minimax, MLS) is severely handicapped by its limited horizon, yet still provides useful sparring partners for reinforcement-learning agents. Stochastic, simulation-based methods (MCTS) achieve robust, “average-case” play but may lack the sharp tactical vision required to break strong heuristic lines. Finally, learning-based agents (AQL, NAQL) profit substantially from expressive value functions and targeted self-play, with NAQL’s neural representation delivering the largest leap in strength—particularly against the opponents it was trained to exploit.
+
+\subsection{Impact of \texttt{jump\_scalar}}
+To quantitatively analyse the effect of \texttt{jump\_scalar}, we evaluated five different parameter settings and observed that the proportion of draws rises sharply as \texttt{jump\_scalar} increases, while win-rate shifts are more nuanced.
+
+For low multipliers ($\leq 1.2$) preserve the original “material advantage” meta-game. Greedy retains ~70–80\% win rates because quickly ferrying a pawn into the goal still outweighs speculative multi-hop routes.
+
+For mid-range ($\approx 1.5$) is the tactical “sweet spot”. Search-based agents can finally monetise deeper look-ahead, toppling Greedy without letting games stagnate. Decisive results remain common (draw-rate only $\approx$ 10\%), so rankings are statistically meaningful.
+
+For high multipliers ($\geq 2$) trade decisiveness for fairness. As hop chains dominate the reward landscape, missing one key sequence rarely leaves enough turns to recover; thus draws surge and inter-agent gaps narrow.
+
+For very high multipliers (5) all but eliminate decisive outcomes, making the system useless for discrimination or learning feedback. Both of the players are more willing to jump repeatedly instead of jumping into goal area.
+
+In summary, the analysis confirms that carefully tuned—but not extreme—jump incentives improve both efficiency and competitive performance, validating the heuristic design choice and providing a principled default value for downstream experiments.

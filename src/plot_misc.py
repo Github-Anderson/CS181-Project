@@ -183,7 +183,7 @@ def plot_table_subplot(ax, data_dict, sente_agents, gote_agents, title_str,
             if val == float('inf'):
                 text_val = r"$+ \infty$"
             elif isinstance(val, float):
-                text_val = f"{val:.2f}"
+                text_val = f"{val:.4f}"  # 改为四位小数
             else:
                 text_val = str(val)
             

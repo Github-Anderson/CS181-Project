@@ -1,0 +1,1129 @@
+# agents.py
+from abc import ABC, abstractmethod
+import random
+import time
+import json
+from collections import defaultdict
+import math
+import copy
+import torch
+import torch.nn as nn
+import torch.optim as optim
+import numpy as np
+from collections import deque
+
+class Player(ABC):
+    def __init__(self, color):
+        self.index = None
+        self.score = 0
+        self.color = color
+    
+    @abstractmethod
+    def get_action(self, actions : list[tuple[int, int, int, int]]) -> tuple[int, int, int, int]:
+        pass
+
+    def set_index(self, index):
+        self.index = index
+
+class HumanPlayer(Player):
+    def get_action(self, actions : list):
+        return None
+
+class AgentPlayer(Player):
+    def __init__(self, color):
+        super().__init__(color)
+        self.board = None
+    
+    def set_board(self, board):
+        self.board = board
+
+
+class DefaultPlayer(AgentPlayer):
+    def get_action(self, actions):
+        return None
+
+
+def evaluation_min(board, player):
+    val = 0
+    goal_area = board.get_goal_area(player)
+    
+    for i in range(board.boardsize):
+        for j in range(board.boardsize):
+            pawn = board.board[i][j]
+            if pawn and pawn.player.color == player.color:
+                goal_distances = []
+                for goal_x, goal_y in goal_area:
+                    if board.board[goal_x][goal_y] is None or board.board[goal_x][goal_y].player != player:
+                        distance = ((goal_x - i) ** 2 + (goal_y - j) ** 2) ** 0.5
+                        goal_distances.append(distance)
+                
+                if goal_distances:
+                    val += min(goal_distances)
+                else:
+                    val -= 20
+    
+    val *= -1
+    return val
+
+def evaluation_max(board, player):
+    val = 0
+    goal_area = board.get_goal_area(player)
+    
+    for i in range(board.boardsize):
+        for j in range(board.boardsize):
+            pawn = board.board[i][j]
+            if pawn and pawn.player.color == player.color:
+                goal_distances = []
+                for goal_x, goal_y in goal_area:
+                    if board.board[goal_x][goal_y] is None or board.board[goal_x][goal_y].player != player:
+                        distance = ((goal_x - i) ** 2 + (goal_y - j) ** 2) ** 0.5
+                        goal_distances.append(distance)
+                
+                if goal_distances:
+                    val += max(goal_distances)
+                else:
+                    val -= 20
+    
+    val *= -1
+    return val
+
+def evaluation_min_score(board, player, action=None):
+    if action is None:
+        return evaluation_min(board, player)
+
+    board_copy = board.clone()
+    board_copy.apply_action(action)
+
+    if board.mode == "classic":
+        return evaluation_min(board_copy, player)
+
+    if board.mode == "score":
+        return evaluation_min(board_copy, player) + board.get_action_score(action)
+
+def evaluation_max_score(board, player, action=None):
+    if action is None:
+        return evaluation_max(board, player)
+
+    board_copy = board.clone()
+    board_copy.apply_action(action)
+
+    if board.mode == "classic":
+        return evaluation_max(board_copy, player)
+
+    if board.mode == "score":
+        return evaluation_min(board_copy, player) + board.get_action_score(action)
+
+class RandomPlayer(AgentPlayer):
+    def get_action(self, actions):
+        return random.choice(actions)
+
+class GreedyPlayer(AgentPlayer):
+    def __init__(self, color):
+        super().__init__(color)
+    
+    def get_action(self, actions):
+        if not actions:
+            return None
+            
+        best_actions = []
+        best_value = float("-inf")
+        
+        for action in actions:
+            value = evaluation_min_score(self.board, self, action)
+
+            if value > best_value:
+                best_value = value
+
+        for action in actions:
+            value = evaluation_min_score(self.board, self, action)
+            if value == best_value:
+                best_actions.append(action)
+                
+        return random.choice(best_actions) if best_actions else None
+
+
+class MinimaxPlayer(AgentPlayer):
+    def __init__(self, color, depth=2, use_local_search=False):
+        super().__init__(color)
+        self.depth = depth
+        self.use_local_search = use_local_search
+        self.time_limit = 3.0
+
+    def get_action(self, actions):
+        if not actions:
+            return None
+
+        time_limit = time.time() + self.time_limit
+        opponent_idx = (self.index + len(self.board.players) // 2) % len(self.board.players)
+        opponent = self.board.players[opponent_idx]
+
+        best_value, best_action = self.minimax(
+            self.depth,
+            self,
+            opponent,
+            time_limit,
+            float("-inf"),
+            float("inf"),
+            True,
+            use_local_search=self.use_local_search
+        )
+
+        return best_action
+
+    def minimax(self, depth, max_player, min_player, time_limit, alpha, beta, is_max, use_local_search=False):
+        if depth == 0 or time.time() > time_limit:
+            return evaluation_max_score(self.board, max_player), None
+
+        current_player = max_player if is_max else min_player
+
+        # local_search
+        if use_local_search:
+            actions = self.local_search_actions(current_player)
+        else:
+            actions = self.board.get_actions(current_player)
+
+        if not actions:
+            return evaluation_max_score(self.board, max_player), None
+
+        best_action = None
+        if is_max:
+            best_value = float("-inf")
+            for action in actions:
+                start_x, start_y, end_x, end_y = action
+                pawn = self.board.board[start_x][start_y]
+                temp_x, temp_y = pawn.x, pawn.y
+
+                self.board.board[end_x][end_y] = pawn
+                self.board.board[start_x][start_y] = None
+                pawn.x, pawn.y = end_x, end_y
+
+                value, _ = self.minimax(depth-1, max_player, min_player, time_limit, alpha, beta, False, use_local_search)
+
+                pawn.x, pawn.y = temp_x, temp_y
+                self.board.board[start_x][start_y] = pawn
+                self.board.board[end_x][end_y] = None
+
+                if value > best_value:
+                    best_value = value
+                    best_action = action
+
+                alpha = max(alpha, best_value)
+                if beta <= alpha:
+                    break
+        else:
+            best_value = float("inf")
+            for action in actions:
+                start_x, start_y, end_x, end_y = action
+                pawn = self.board.board[start_x][start_y]
+                temp_x, temp_y = pawn.x, pawn.y
+
+                self.board.board[end_x][end_y] = pawn
+                self.board.board[start_x][start_y] = None
+                pawn.x, pawn.y = end_x, end_y
+
+                value, _ = self.minimax(depth-1, max_player, min_player, time_limit, alpha, beta, True, use_local_search)
+
+                pawn.x, pawn.y = temp_x, temp_y
+                self.board.board[start_x][start_y] = pawn
+                self.board.board[end_x][end_y] = None
+
+                if value < best_value:
+                    best_value = value
+                    best_action = action
+
+                beta = min(beta, best_value)
+                if beta <= alpha:
+                    break
+
+        return best_value, best_action
+
+    def local_search_actions(self, player):
+        best_actions = []
+        actions = self.board.get_actions(player)
+        if not actions:
+            return []
+
+        pawn_actions = {}
+        for action in actions:
+            start_x, start_y, end_x, end_y = action
+            pawn_actions.setdefault((start_x, start_y), []).append(action)
+
+        for pawn_pos, acts in pawn_actions.items():
+            best_val = float('-inf')
+            best_act = None
+            for act in acts:
+                start_x, start_y, end_x, end_y = act
+                pawn = self.board.board[start_x][start_y]
+                temp_x, temp_y = pawn.x, pawn.y
+
+                self.board.board[end_x][end_y] = pawn
+                self.board.board[start_x][start_y] = None
+                pawn.x, pawn.y = end_x, end_y
+
+                val = evaluation_max_score(self.board, player)
+
+                pawn.x, pawn.y = temp_x, temp_y
+                self.board.board[start_x][start_y] = pawn
+                self.board.board[end_x][end_y] = None
+
+                if val > best_val:
+                    best_val = val
+                    best_act = act
+            if best_act:
+                best_actions.append(best_act)
+        return best_actions
+
+def evaluation_MCTS(board, player):
+    my_pieces = []
+    goal_area = set(board.get_goal_area(player))
+    home_area = set(board.get_home_area(player))
+    
+    if player.color == "RED":
+        goal_center = (board.boardsize - 1, board.boardsize - 1)
+    else:
+        goal_center = (0, 0)
+    
+    pieces_in_goal = 0
+    normalized_dist_sum = 0
+    max_possible_dist = 2 * board.boardsize
+    
+    for i in range(board.boardsize):
+        for j in range(board.boardsize):
+            pawn = board.board[i][j]
+            if pawn and pawn.player.color == player.color: 
+                my_pieces.append((i, j))
+                
+                if (i, j) in goal_area:
+                    pieces_in_goal += 1
+                else:
+                    dist = abs(goal_center[0] - i) + abs(goal_center[1] - j)
+                    normalized_dist = dist / max_possible_dist
+                    normalized_dist_sum += normalized_dist
+    
+    goal_progress = pieces_in_goal / 4  
+    goal_score = 0.4 * (1000 * goal_progress)  
+    
+    distance_score = 0.3 * (300 * (1 - normalized_dist_sum / len(my_pieces)))  
+    
+    stage_bonus = 0
+    if pieces_in_goal >= 1:
+        stage_bonus += 50  
+    if pieces_in_goal >= 2:
+        stage_bonus += 100  
+    if pieces_in_goal >= 3:
+        stage_bonus += 200  
+    if pieces_in_goal >= 4:
+        stage_bonus += 400 
+    
+    pieces_at_home = sum(1 for (i, j) in my_pieces 
+                        if (i, j) in home_area and not board.board[i][j].has_left_home)
+    home_penalty = -100 * (pieces_at_home / len(my_pieces)) 
+    
+    final_score = (goal_score + 
+                  distance_score + 
+                  stage_bonus + 
+                  home_penalty)
+    
+    return max(-1000, min(1000, final_score))
+def is_going_backwards(board_size, action, player):
+    start_x, start_y, end_x, end_y = action
+    if player.color == "RED":
+        return end_x < start_x or end_y < start_y
+    else:
+        return end_x > start_x or end_y > start_y
+
+def is_jump_move(board, action):
+    """Check if the action is a jump move (not a single step)"""
+    start_x, start_y, end_x, end_y = action
+    return abs(end_x - start_x) > 1 or abs(end_y - start_y) > 1
+
+# Here I want to designa an agent utilizing Monte Carlo Tree Search
+# Please provide a full code with all procedures
+
+class MCTSNode:
+    def __init__(self, board, parent=None, action=None, player_index=None):
+        self.board = copy.deepcopy(board)
+        self.parent = parent
+        self.action = action
+        self.player_index = player_index % len(board.players) if player_index is not None else None
+        self.children = []
+        self.visits = 0
+        self.value = 0.0
+        self.untried_actions = None
+        self.last_moved_piece = (action[0], action[1]) if action else None
+        self.terminal = False
+        self.winner = None
+
+    def is_fully_expanded(self):
+        return self.untried_actions is not None and len(self.untried_actions) == 0
+    
+    def expand(self, mcts_player):
+        if self.untried_actions is None:
+   
+            self.player_index = self.player_index % len(self.board.players)
+            current_player = self.board.players[self.player_index]
+            self.untried_actions = self.board.get_actions(current_player)
+            
+            # Prioritize actions that move pieces toward goal
+            if self.untried_actions:
+                self.untried_actions = self.prioritize_actions(self.untried_actions, current_player)
+            
+            if not self.untried_actions:
+                self.terminal = True
+                return None
+
+        action = self.untried_actions.pop()
+        next_board = copy.deepcopy(self.board)
+        next_board.apply_action(action)
+        
+        # Check if this action leads to a terminal state
+        state = next_board.get_state()
+        if state:
+            self.terminal = True
+            self.winner = state
+        
+
+        next_player_index = (self.player_index + 1) % len(next_board.players)
+        child_node = MCTSNode(next_board, parent=self, action=action, player_index=next_player_index)
+        self.children.append(child_node)
+        return child_node
+
+    def prioritize_actions(self, actions, player):
+        """Prioritize actions that move pieces toward goal area"""
+        goal_area = set(self.board.get_goal_area(player))
+        
+        def action_score(action):
+            start_x, start_y, end_x, end_y = action
+            start_dist = min(((gx - start_x)**2 + (gy - start_y)**2) for gx, gy in goal_area)
+            end_dist = min(((gx - end_x)**2 + (gy - end_y)**2) for gx, gy in goal_area)
+            
+            # Prefer moves that reduce distance to goal
+            distance_improvement = start_dist - end_dist
+            
+            # Bonus for jumps
+            is_jump = is_jump_move(self.board, action)
+            
+            # Penalty for moving backwards (away from goal)
+            backwards_penalty = 1 if is_going_backwards(self.board.boardsize, action, player) else 0
+            
+            return (distance_improvement * 10 + is_jump * 5 - backwards_penalty * 15, 
+                    -end_dist)  # Secondary sort by distance to goal
+
+        return sorted(actions, key=action_score, reverse=True)
+
+    def best_child(self, mcts_player, c_param=1.4):
+        def ucb_score(child):
+            if child.visits == 0:
+                return float('inf')
+            
+            exploit = child.value / child.visits
+            explore = c_param * math.sqrt(math.log(self.visits) / child.visits)
+            
+            strategy_score = 0
+            if child.action:
+                start_x, start_y, end_x, end_y = child.action
+                player = mcts_player.board.players[child.player_index]
+                
+        
+                if player.color == "RED":
+                    direction_score = (end_x - start_x + end_y - start_y) / 2
+                else:
+                    direction_score = (start_x - end_x + start_y - end_y) / 2
+                strategy_score += direction_score * 0.2
+                
+      
+                if is_jump_move(self.board, child.action):
+                    strategy_score += 0.3
+            
+            return exploit + explore + strategy_score
+
+        return max(self.children, key=ucb_score)
+
+    def most_visited_child(self):
+        if not self.children:
+            return None
+        return max(self.children, key=lambda child: child.visits)
+
+
+class MCTSPlayer(AgentPlayer):
+    def __init__(self, color, simulations=3000, time_limit=5.0):
+        super().__init__(color)
+        self.simulations = simulations
+        self.time_limit = time_limit
+    
+    def get_action(self, actions):
+        if not actions:
+            return None
+        
+        start_time = time.time()
+        root = MCTSNode(self.board, player_index=self.index)
+        current_simulations = 0
+        
+        while (current_simulations < self.simulations and 
+               time.time() - start_time < self.time_limit):
+            # 1. Selection
+            node = root
+            board_copy = copy.deepcopy(self.board)
+            
+        
+            while node.is_fully_expanded() and not node.terminal:
+                node = node.best_child(self, c_param=self._get_ucb_param(current_simulations))
+                if node.action:
+                    board_copy.apply_action(node.action)
+            
+            # 2. Expansion
+            if not node.terminal and not node.is_fully_expanded():
+                node = node.expand(self)
+                if node and node.action:
+                    board_copy.apply_action(node.action)
+            
+            # 3. Simulation
+            if node:
+                value = self.simulate(board_copy, node.player_index)
+            else:
+                value = 0
+            
+            # 4. Backpropagation
+            while node:
+                node.visits += 1
+                node.value += value
+                node = node.parent
+            
+            current_simulations += 1
+        
+     
+        best_action = self._select_final_action(root)
+        return best_action
+    
+    def _select_final_action(self, root):
+
+        if not root.children:
+            return None
+        
+        best_score = float('-inf')
+        best_action = None
+        
+        print("\n=== MCTS Final Selection Debug ===")
+        print(f"Total simulations: {root.visits}")
+        print(f"Current pieces in goal: {self._count_pieces_in_goal()}")
+        
+        for child in root.children:
+            if child.visits == 0:
+                continue
+            
+            action = child.action
+            start_x, start_y, end_x, end_y = action
+            
+    
+            visit_ratio = child.visits / root.visits
+            win_ratio = child.value / child.visits if child.visits > 0 else 0
+            
+
+            direction_score = 0
+            if self.color == "RED":
+                direction_score = (end_x - start_x) + (end_y - start_y)
+            else:
+                direction_score = (start_x - end_x) + (start_y - end_y)
+            
+ 
+            temp_board = copy.deepcopy(self.board)
+            temp_board.apply_action(action)
+            eval_score = evaluation_MCTS(temp_board, self)
+            
+      
+            score = (
+                win_ratio * 0.4 +
+                visit_ratio * 0.2 +
+                direction_score * 0.4
+            )
+            
+            # print(f"\nAction {action}:")
+            # print(f"- Visits: {child.visits} ({visit_ratio:.2f})")
+            # print(f"- Value: {child.value:.2f} (Win ratio: {win_ratio:.2f})")
+            # print(f"- Direction score: {direction_score}")
+            # print(f"- Evaluation score: {eval_score}")
+            # print(f"- Final score: {score}")
+            
+            if score > best_score:
+                best_score = score
+                best_action = action
+                
+        print(f"\nSelected action: {best_action} with score {best_score}")
+        return best_action
+
+    def _get_ucb_param(self, simulations):
+        pieces_in_goal = self._count_pieces_in_goal()
+        if pieces_in_goal < 2:  
+            return 1.8
+        elif pieces_in_goal < 4:  
+            return 1.4
+        else: 
+            return 1.0
+    
+    def _count_pieces_in_goal(self):
+        count = 0
+        goal_area = set(self.board.get_goal_area(self))
+        for i in range(self.board.boardsize):
+            for j in range(self.board.boardsize):
+                pawn = self.board.board[i][j]
+                if pawn and pawn.player == self and (i, j) in goal_area:
+                    count += 1
+        return count
+
+    def simulate(self, board, current_player_index):
+        depth = 0
+        max_depth = 30
+        
+        while depth < max_depth:
+            state = board.get_state()
+            if state:
+                if state == self:
+                    pieces_in_goal = sum(1 for i, j in board.get_goal_area(self)
+                                    if board.board[i][j] and 
+                                    board.board[i][j].player == self)
+                    
+                    return min(1.0, 0.6 + 0.1 * pieces_in_goal)  # 0.7 到 1.0
+            
+            current_player = board.players[current_player_index]
+            actions = board.get_actions(current_player)
+            
+            if not actions:
+                break
+            
+            
+            if random.random() < 0.9:  
+                valid_actions = []
+                for action in actions:
+                    start_x, start_y, end_x, end_y = action
+               
+                    if current_player.color == "RED":
+                        if end_x >= start_x and end_y >= start_y:
+                            valid_actions.append(action)
+                    else:
+                        if end_x <= start_x and end_y <= start_y:
+                            valid_actions.append(action)
+                
+                if valid_actions:
+                    action = self._select_simulation_action(board, valid_actions, current_player)
+                else:
+                    action = random.choice(actions)
+            else:
+                action = random.choice(actions)
+            
+            board.apply_action(action)
+            current_player_index = (current_player_index + 1) % len(board.players)
+            depth += 1
+        
+        eval_score = evaluation_MCTS(board, self)
+        return eval_score / 1000.0  
+
+    def _select_simulation_action(self, board, actions, player):
+       
+        best_action = None
+        best_score = float('-inf')
+        goal_area = set(board.get_goal_area(player))
+        
+        for action in actions:
+            start_x, start_y, end_x, end_y = action
+            
+            
+            start_dist = min(abs(gx - start_x) + abs(gy - start_y) 
+                           for gx, gy in goal_area)
+            end_dist = min(abs(gx - end_x) + abs(gy - end_y) 
+                          for gx, gy in goal_area)
+            
+           
+            score = (start_dist - end_dist) * 4
+            
+            
+            if player.color == "RED":
+                direction_score = (end_x - start_x + end_y - start_y)
+            else:
+                direction_score = (start_x - end_x + start_y - end_y)
+            score += direction_score * 2
+            
+           
+            if is_jump_move(board, action):
+                score += 3
+            
+            if score > best_score:
+                best_score = score
+                best_action = action
+        
+        return best_action
+    
+class FeatureExtractor:
+   
+    def get_features(self, board, player, action=None):
+        features = {}
+        goal_area = set(board.get_goal_area(player))
+        home_area = set(board.get_home_area(player))
+        
+        if player.color == "RED":
+            goal_center = (board.boardsize - 1, board.boardsize - 1)
+        else:
+            goal_center = (0, 0)
+        
+       
+        pieces_positions = []
+        pieces_in_goal = 0
+        total_dist = 0
+        max_possible_dist = 2 * board.boardsize
+        
+      
+        for i in range(board.boardsize):
+            for j in range(board.boardsize):
+                pawn = board.board[i][j]
+                if pawn and pawn.player.color == player.color:
+                    pieces_positions.append((i, j))
+                    if (i, j) in goal_area:
+                        pieces_in_goal += 1
+                    else:
+                        dist = abs(goal_center[0] - i) + abs(goal_center[1] - j)
+                        total_dist += dist
+        
+        features["pieces_in_goal"] = pieces_in_goal / 4
+        features["avg_distance"] = total_dist / (4 * max_possible_dist)
+        
+       
+        if action:
+            start_x, start_y, end_x, end_y = action
+            
+            
+            start_dist = abs(goal_center[0] - start_x) + abs(goal_center[1] - start_y)
+            end_dist = abs(goal_center[0] - end_x) + abs(goal_center[1] - end_y)
+            features["distance_improvement"] = (start_dist - end_dist) / max_possible_dist
+            
+      
+            if player.color == "RED":
+                direction_score = (end_x - start_x + end_y - start_y)
+            else:
+                direction_score = (start_x - end_x + start_y - end_y)
+            features["direction"] = direction_score / (2 * board.boardsize)
+            
+         
+            features["is_jump"] = 1.0 if is_jump_move(board, action) else 0.0
+            
+           
+            features["reaches_goal"] = 1.0 if (end_x, end_y) in goal_area else 0.0
+            
+        
+            features["is_backwards"] = 1.0 if is_going_backwards(board.boardsize, action, player) else 0.0
+            
+            
+            features["leaves_home"] = 1.0 if (start_x, start_y) in home_area and not (end_x, end_y) in home_area else 0.0
+        
+        return features
+
+class ApproximateQLearningPlayer(AgentPlayer):
+    def __init__(self, color, alpha=0.1, gamma=0.9, epsilon=0.1):
+        super().__init__(color)
+        self.alpha = alpha
+        self.gamma = gamma
+        self.epsilon = epsilon
+        self.weights = defaultdict(float)
+        self.feature_extractor = FeatureExtractor()
+        self.previous_state = None
+        self.previous_action = None
+        
+        # 初始化权重
+        self.weights.update({
+            'pieces_in_goal': 2000,      
+            'avg_distance': -800,        
+            'distance_improvement': 500, 
+            'direction': 300,            
+            'is_jump': 100,             
+            'reaches_goal': 1500,        
+            'is_backwards': -1000,       
+            'leaves_home': 200         
+        })
+    
+    def get_qvalue(self, board, action):
+        features = self.feature_extractor.get_features(board, self, action)
+        return sum(self.weights[f] * v for f, v in features.items())
+    
+    def get_action(self, actions):
+        if not actions:
+            return None
+        
+        pieces_in_goal = sum(1 for i, j in self.board.get_goal_area(self)
+                            if self.board.board[i][j] and 
+                            self.board.board[i][j].player == self)
+        
+        if pieces_in_goal >= 3:
+            exploration_prob = 0.05
+        elif pieces_in_goal >= 2:
+            exploration_prob = 0.1
+        else:
+            exploration_prob = self.epsilon
+        
+        if random.random() < exploration_prob:
+            valid_actions = [a for a in actions if not is_going_backwards(self.board.boardsize, a, self)]
+            if valid_actions:
+                best_action = random.choice(valid_actions)
+            else:
+                best_action = random.choice(actions)
+        else:
+            q_values = []
+            for action in actions:
+                q_value = self.get_qvalue(self.board, action)
+                q_values.append((action, q_value))
+            best_action = max(q_values, key=lambda x: x[1])[0]
+ 
+        self.previous_state = copy.deepcopy(self.board)
+        self.previous_action = best_action
+        
+  
+        next_board = copy.deepcopy(self.board)
+        next_board.apply_action(best_action)
+        reward = self.get_reward(next_board, best_action)
+        
+
+        self.update(reward, next_board)
+        
+     
+        self.epsilon = max(0.01, self.epsilon * 0.995)
+        
+        return best_action
+    
+    def update(self, reward, next_board):
+        if self.previous_state is None or self.previous_action is None:
+            return
+        
+
+        current_features = self.feature_extractor.get_features(
+            self.previous_state, 
+            self, 
+            self.previous_action
+        )
+        
+
+        current_q = sum(self.weights[f] * v for f, v in current_features.items())
+        
+
+        next_max_q = float('-inf')
+        next_actions = next_board.get_actions(self)
+        if next_actions:
+            next_q_values = [self.get_qvalue(next_board, a) for a in next_actions]
+            next_max_q = max(next_q_values)
+        else:
+            next_max_q = 0
+        
+  
+        target = reward + self.gamma * next_max_q
+        difference = target - current_q
+        
+     
+        for feature, value in current_features.items():
+            self.weights[feature] += self.alpha * difference * value
+        
+  
+        self.previous_state = None
+        self.previous_action = None
+    
+    def get_reward(self, board, action):
+        reward = 0
+        state = board.get_state()
+        
+        if state and state == self:
+            pieces_in_goal = sum(1 for i, j in board.get_goal_area(self)
+                            if board.board[i][j] and 
+                            board.board[i][j].player == self)
+            return 3000 + pieces_in_goal * 500  
+        
+        old_features = self.feature_extractor.get_features(self.previous_state, self)
+        new_features = self.feature_extractor.get_features(board, self)
+        
+
+        goal_progress = new_features["pieces_in_goal"] - old_features["pieces_in_goal"]
+        if goal_progress > 0:
+            current_pieces = int(new_features["pieces_in_goal"] * 4)
+            reward += 300 * (2 ** current_pieces) 
+        
+  
+        dist_improvement = old_features["avg_distance"] - new_features["avg_distance"]
+        pieces_in_goal = int(new_features["pieces_in_goal"] * 4)
+        if pieces_in_goal >= 2:
+            reward += dist_improvement * 200  
+        else:
+            reward += dist_improvement * 100
+        
+
+        if new_features["avg_distance"] > old_features["avg_distance"]:
+            reward -= 300
+        
+   
+        if is_jump_move(board, action):
+            if pieces_in_goal >= 3:
+                reward += 0  
+            elif pieces_in_goal >= 2:
+                reward += 50  
+            else:
+                reward += 200  
+                
+        if is_going_backwards(board.boardsize, action, self):
+            if pieces_in_goal >= 2:
+                reward -= 500  
+            else:
+                reward -= 200
+        
+        return reward
+
+class NeuralFeatureExtractor(nn.Module):
+    def __init__(self, board_size=8):
+        super().__init__()
+        self.board_size = board_size
+        
+
+        self.conv1 = nn.Conv2d(4, 32, kernel_size=3, padding=1)
+        self.conv2 = nn.Conv2d(32, 64, kernel_size=3, padding=1)
+        self.conv3 = nn.Conv2d(64, 64, kernel_size=3, padding=1)
+        
+  
+        self.action_fc = nn.Linear(4, 32)
+        
+     
+        board_features = 64 * board_size * board_size
+        combined_features = board_features + 32
+        
+        self.fc1 = nn.Linear(combined_features, 256)
+        self.fc2 = nn.Linear(256, 128)
+        self.fc3 = nn.Linear(128, 1)
+        
+        self.relu = nn.ReLU()
+        self.dropout = nn.Dropout(0.3)
+
+    def forward(self, board_state, action):
+   
+        x1 = self.relu(self.conv1(board_state))
+        x1 = self.relu(self.conv2(x1))
+        x1 = self.relu(self.conv3(x1))
+        x1 = x1.view(x1.size(0), -1)
+        
+   
+        x2 = self.relu(self.action_fc(action))
+        
+  
+        combined = torch.cat([x1, x2], dim=1)
+        x = self.relu(self.fc1(combined))
+        x = self.dropout(x)
+        x = self.relu(self.fc2(x))
+        x = self.dropout(x)
+        
+        return self.fc3(x)
+    
+    def encode_board(self, board, player):
+        """将棋盘编码为4通道张量"""
+        device = next(self.parameters()).device
+        channels = torch.zeros((4, self.board_size, self.board_size), device=device)
+        
+        
+        goal_area = set(board.get_goal_area(player))
+        home_area = set(board.get_home_area(player))
+        
+        for i in range(self.board_size):
+            for j in range(self.board_size):
+                pawn = board.board[i][j]
+                if pawn:
+                    if pawn.player.color == player.color:
+                        channels[0, i, j] = 1
+                    else:
+                        channels[1, i, j] = 1
+                        
+                if (i, j) in goal_area:
+                    channels[2, i, j] = 1
+                if (i, j) in home_area:
+                    channels[3, i, j] = 1
+                    
+        return channels.unsqueeze(0)  
+
+    def encode_action(self, action):
+
+        device = next(self.parameters()).device
+        return torch.tensor([action], dtype=torch.float32, device=device)
+
+class Neural_ApproximateQLearningPlayer(AgentPlayer):
+    def __init__(self, color, board_size=8, lr=0.001, gamma=0.99, epsilon=0.1, if_train=True):
+        super().__init__(color)
+        self.board_size = board_size
+        self.gamma = gamma
+        self.epsilon = epsilon
+        self.if_train = if_train
+
+   
+        self.network = NeuralFeatureExtractor(board_size)
+        self.target_network = NeuralFeatureExtractor(board_size)
+        self.target_network.load_state_dict(self.network.state_dict())
+
+        self.optimizer = optim.Adam(self.network.parameters(), lr=lr)
+        if torch.backends.mps.is_available():
+            self.device = torch.device("mps")
+        elif torch.cuda.is_available():
+            self.device = torch.device("cuda")
+        else:
+            self.device = torch.device("cpu")
+        
+        print(f"Using device: {self.device}") 
+
+        self.network.to(self.device)
+        self.target_network.to(self.device)
+
+ 
+        self.memory = deque(maxlen=10000)
+        self.batch_size = 32
+        self.target_update = 1000
+        self.steps = 0
+
+        self.last_action = None  
+
+    def _is_reverse_action(self, action):
+ 
+        if self.last_action is None:
+            return False
+        last_start_x, last_start_y, last_end_x, last_end_y = self.last_action
+        curr_start_x, curr_start_y, curr_end_x, curr_end_y = action
+        return (last_end_x, last_end_y) == (curr_start_x, curr_start_y) and \
+               (last_start_x, last_start_y) == (curr_end_x, curr_end_y)
+
+    def get_action(self, actions, training=True):
+        if not actions:
+            return None
+
+
+        filtered_actions = [a for a in actions if not self._is_reverse_action(a)]
+        if not filtered_actions:
+            filtered_actions = actions  
+
+
+        pieces_not_in_goal = 0
+        goal_area = set(self.board.get_goal_area(self))
+        for i in range(self.board.boardsize):
+            for j in range(self.board.boardsize):
+                piece = self.board.board[i][j]
+                if piece and piece.player == self and (i, j) not in goal_area:
+                    pieces_not_in_goal += 1
+
+   
+        if pieces_not_in_goal <= 2:
+            best_value = float('-inf')
+            best_action = None
+
+            for action in filtered_actions:
+                value = evaluation_min_score(self.board, self, action)
+
+                if value > best_value:
+                    best_value = value
+                    best_action = action
+
+            if best_action is not None:
+                self.last_action = best_action
+                return best_action
+
+        pieces_in_goal = sum(1 for i, j in self.board.get_goal_area(self)
+                              if self.board.board[i][j] and self.board.board[i][j].player == self)
+        exploration_prob = self.epsilon
+        if not training:
+            exploration_prob = 0.05
+        elif pieces_in_goal >= 3:
+            exploration_prob = 0.05
+        elif pieces_in_goal >= 2:
+            exploration_prob = 0.1
+
+        if not self.if_train:
+            exploration_prob = 0
+
+
+        if random.random() < exploration_prob:
+            valid_actions = [a for a in filtered_actions if not is_going_backwards(self.board.boardsize, a, self)]
+            action = random.choice(valid_actions) if valid_actions else random.choice(filtered_actions)
+        else:
+            state_tensor = self.network.encode_board(self.board, self)
+            max_q = float('-inf')
+            action = None
+            self.network.eval()
+            with torch.no_grad():
+                for a in filtered_actions:
+                    action_tensor = self.network.encode_action(a)
+                    q_value = self.network(state_tensor, action_tensor).item()
+                    if q_value > max_q:
+                        max_q = q_value
+                        action = a
+            self.network.train()
+            if action is None:
+                action = random.choice(filtered_actions)
+
+        self.last_action = action
+        return action
+
+    def store_transition(self, state, action, reward, next_state, done):
+        self.memory.append((state, action, reward, next_state, done))
+
+    def update_network(self):
+        if len(self.memory) < self.batch_size:
+            return
+
+        batch = random.sample(self.memory, self.batch_size)
+        state_batch = []
+        action_batch = []
+        reward_batch = []
+        next_state_batch = []
+        done_batch = []
+
+        for state, action, reward, next_state, done in batch:
+            state_batch.append(self.network.encode_board(state, self))
+            action_batch.append(self.network.encode_action(action))
+            reward_batch.append(reward)
+            next_state_batch.append(self.network.encode_board(next_state, self))
+            done_batch.append(done)
+
+        state_batch = torch.cat(state_batch)
+        action_batch = torch.cat(action_batch)
+        reward_batch = torch.tensor(reward_batch, device=self.device)
+        next_state_batch = torch.cat(next_state_batch)
+        done_batch = torch.tensor(done_batch, device=self.device)
+
+        current_q = self.network(state_batch, action_batch).squeeze()
+
+        with torch.no_grad():
+            next_q = torch.zeros_like(reward_batch)
+            for idx, next_state in enumerate(next_state_batch):
+                if not done_batch[idx]:
+                    next_actions = self.board.get_actions(self)
+                    if self.last_action:
+                        next_actions = [a for a in next_actions if not self._is_reverse_action(a)]
+                        if not next_actions:
+                            next_actions = self.board.get_actions(self)
+                    if next_actions:
+                        max_next_q = float('-inf')
+                        for action in next_actions:
+                            action_tensor = self.network.encode_action(action)
+                            q = self.target_network(next_state.unsqueeze(0), action_tensor).item()
+                            max_next_q = max(max_next_q, q)
+                        next_q[idx] = max_next_q
+            target_q = reward_batch + self.gamma * next_q
+
+        loss = nn.MSELoss()(current_q, target_q)
+        self.optimizer.zero_grad()
+        loss.backward()
+        self.optimizer.step()
+
+        self.steps += 1
+        if self.steps % self.target_update == 0:
+            self.target_network.load_state_dict(self.network.state_dict())
+
+    def save_model(self, path):
+        torch.save({
+            'network_state_dict': self.network.state_dict(),
+            'optimizer_state_dict': self.optimizer.state_dict(),
+            'steps': self.steps
+        }, path)
+
+    def load_model(self, path):
+        checkpoint = torch.load(path, map_location=self.device)
+        self.network.load_state_dict(checkpoint['network_state_dict'])
+        self.target_network.load_state_dict(checkpoint['network_state_dict'])
+        self.optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+        self.steps = checkpoint['steps']
+
+        self.network.to(self.device)
+        self.target_network.to(self.device)

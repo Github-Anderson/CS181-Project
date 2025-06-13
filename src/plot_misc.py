@@ -96,6 +96,11 @@ def plot_heatmap_subplot(ax, data_dict, sente_agents, gote_agents, title_str,
     diff_df = pd.DataFrame(diff_values, index=sente_agents, columns=gote_agents)
 
     diff_percentage = ((diff_df + 1) / 2 * 100).round(1)
+    
+    # Calculate draw percentage
+    draw_percentage = np.where(total_games_df.values == 0, 0.0,
+                              draws_df.values / total_games_df.values * 100)
+    draw_percentage_df = pd.DataFrame(draw_percentage, index=sente_agents, columns=gote_agents)
 
     im = ax.imshow(diff_df, cmap='RdYlGn_r', vmin=-1, vmax=1, aspect='auto')
 
@@ -120,9 +125,17 @@ def plot_heatmap_subplot(ax, data_dict, sente_agents, gote_agents, title_str,
             text_color = "white" if abs(cell_value) > 0.6 else "black"
             
             percentage_text = f"{diff_percentage.iat[i, j]:.1f}%"
-            ax.text(j, i, percentage_text,
+            draw_text = f"Draw: {draw_percentage_df.iat[i, j]:.1f}%"
+            
+            # Display win rate in upper part of cell
+            ax.text(j, i-0.15, percentage_text,
                     ha="center", va="center",
                     color=text_color, fontsize=cell_text_fs, weight='normal')
+            
+            # Display draw rate in lower part of cell
+            ax.text(j, i+0.15, draw_text,
+                    ha="center", va="center",
+                    color=text_color, fontsize=cell_text_fs-1, weight='normal', alpha=0.8)
     
     ax.set_title(title_str, fontsize=title_fs, pad=4)
     return im
